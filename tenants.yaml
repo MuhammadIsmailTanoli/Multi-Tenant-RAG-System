@@ -1,0 +1,12 @@
+tenants:
+  - id: acme
+    name: "Acme Corp"
+    pdf_path: "data/handbooks/Acme Corp Employee Handbook.pdf"
+    collection_name: "tenant_acme"
+    description: "Multiversal hardware, explosives, and chaotic tech solutions"
+
+  - id: globex
+    name: "Globex Corporation"
+    pdf_path: "data/handbooks/Globex Corporation Employee Handbook.pdf"
+    collection_name: "tenant_globex"
+    description: "Global energy, international logistics, and high-security operations"
