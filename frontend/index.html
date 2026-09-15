@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Tenant RAG — Testing Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0B0F19;
+      --bg-card: rgba(18, 24, 39, 0.85);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      --text-primary: #F8FAFC;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --acme-accent: #3B82F6;
+      --acme-glow: rgba(59, 130, 246, 0.25);
+      --globex-accent: #10B981;
+      --globex-glow: rgba(16, 185, 129, 0.25);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: radial-gradient(circle at 50% 0%, #171E38 0%, var(--bg-main) 70%);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 0.85rem 2rem;
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(12px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #10B981;
+      box-shadow: 0 0 6px #10B981;
+    }
+
+    .brand-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-badge {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      background: rgba(99, 102, 241, 0.15);
+      color: #818CF8;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .tenant-selector-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 0.3rem;
+      border-radius: 12px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .tenant-tab {
+      padding: 0.4rem 1rem;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      transition: all 0.18s ease;
+    }
+
+    .tenant-tab:hover { color: var(--text-primary); }
+
+    .tenant-tab.active-acme {
+      background: var(--acme-accent);
+      color: #fff;
+      box-shadow: 0 0 14px var(--acme-glow);
+    }
+
+    .tenant-tab.active-globex {
+      background: var(--globex-accent);
+      color: #fff;
+      box-shadow: 0 0 14px var(--globex-glow);
+    }
+
+    /* ── Chat layout ── */
+    .chat-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+
+    .messages-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem 0 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.4rem;
+      scroll-behavior: smooth;
+    }
+
+    /* Scrollbar */
+    .messages-area::-webkit-scrollbar { width: 5px; }
+    .messages-area::-webkit-scrollbar-track { background: transparent; }
+    .messages-area::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.1);
+      border-radius: 9999px;
+    }
+
+    /* ── Messages ── */
+    .message-row {
+      display: flex;
+      gap: 0.9rem;
+      animation: fadeUp 0.25s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .message-row.user {
+      flex-direction: row-reverse;
+      align-self: flex-end;
+      max-width: 80%;
+    }
+
+    .message-row.bot { max-width: 90%; }
+
+    .avatar {
+      width: 34px; height: 34px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+      align-self: flex-end;
+    }
+
+    .avatar.user-avatar {
+      background: transparent;
+      border: 2px solid rgba(99,102,241,0.4);
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .avatar.bot-avatar {
+      background: transparent;
+      border: 2px solid rgba(255,255,255,0.12);
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .message-bubble {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 0.9rem 1.1rem;
+      font-size: 0.92rem;
+      line-height: 1.65;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    }
+
+    .message-row.user .message-bubble {
+      background: #1E293B;
+      border-color: rgba(255,255,255,0.12);
+      border-bottom-right-radius: 4px;
+    }
+
+    .message-row.bot .message-bubble { border-bottom-left-radius: 4px; }
+
+    .message-bubble.error-bubble {
+      background: rgba(239,68,68,0.1);
+      border-color: rgba(239,68,68,0.3);
+      color: #FCA5A5;
+    }
+
+    .tenant-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+      opacity: 0.85;
+    }
+
+    /* ── Sources accordion ── */
+    .citations-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 9px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(255,255,255,0.03);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    .citations-toggle:hover {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.15);
+    }
+
+    .citations-toggle-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .citations-badge {
+      background: rgba(99,102,241,0.2);
+      color: #818CF8;
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 9999px;
+      padding: 0.1rem 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .citations-chevron {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      transition: transform 0.25s ease;
+    }
+
+    .citations-chevron.open { transform: rotate(180deg); }
+
+    .citations-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, opacity 0.25s ease;
+      opacity: 0;
+    }
+
+    .citations-body.open {
+      max-height: 600px;
+      opacity: 1;
+    }
+
+    .citations-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      padding-top: 0.6rem;
+    }
+
+    .source-card {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.79rem;
+      transition: border-color 0.15s ease;
+    }
+
+    .source-card:hover { border-color: rgba(255,255,255,0.18); }
+
+    .source-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.3rem;
+    }
+
+    .source-link {
+      color: #818CF8;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.8rem;
+    }
+
+    .source-link:hover { text-decoration: underline; }
+
+    .source-score {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.05);
+      color: var(--text-secondary);
+    }
+
+    .source-snippet {
+      color: var(--text-secondary);
+      font-size: 0.77rem;
+      line-height: 1.4;
+      font-style: italic;
+    }
+
+    /* ── Input bar ── */
+    .input-area {
+      padding: 1rem 0 1.25rem;
+      display: flex;
+      gap: 0.65rem;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .input-box {
+      flex: 1;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 0.82rem 1.1rem;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.93rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-box:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 12px rgba(99,102,241,0.2);
+    }
+
+    .input-box::placeholder { color: var(--text-muted); }
+
+    .send-btn {
+      background: #6366F1;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 0.82rem 1.35rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: #4F46E5;
+      transform: translateY(-1px);
+      box-shadow: 0 0 16px rgba(99,102,241,0.4);
+    }
+
+    .send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── System notice ── */
+    .system-notice {
+      text-align: center;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      background: rgba(255,255,255,0.03);
+      border-radius: 9999px;
+      padding: 0.3rem 0.9rem;
+      align-self: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="status-dot"></div>
+      <span class="brand-title">Multi-Tenant RAG</span>
+      <span class="brand-badge">Isolation Testing</span>
+    </div>
+    <div class="tenant-selector-bar">
+      <button class="tenant-tab active-acme" id="tab-acme" onclick="setTenant('acme')">
+        🏢 Acme Corp
+      </button>
+      <button class="tenant-tab" id="tab-globex" onclick="setTenant('globex')">
+        🌐 Globex Corporation
+      </button>
+    </div>
+  </header>
+
+  <!-- Chat -->
+  <div class="chat-wrapper">
+    <div class="messages-area" id="messages-area">
+      <div class="message-row bot">
+        <div class="avatar bot-avatar"><img src="/static/bot_avatar.jpg" alt="AI"></div>
+        <div class="message-bubble">
+          Welcome to the <strong>Multi-Tenant RAG Testing Console</strong>.<br><br>
+          Currently active: <strong id="welcome-tenant">Acme Corp</strong>.
+          All retrieved context and answers are physically isolated to this tenant's vector collection.
+          Ask anything, or switch tenants using the header controls.
+        </div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="input-area">
+      <input
+        type="text"
+        id="question-input"
+        class="input-box"
+        placeholder="Ask a question about the active tenant's handbook..."
+        onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleSend(); }"
+      />
+      <button class="send-btn" id="send-btn" onclick="handleSend()">
+        Ask
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    let currentTenant = 'acme';
+
+    function scrollToBottom() {
+      const area = document.getElementById('messages-area');
+      area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+    }
+
+    function setTenant(tenant) {
+      currentTenant = tenant;
+      const acmeTab   = document.getElementById('tab-acme');
+      const globexTab = document.getElementById('tab-globex');
+
+      if (tenant === 'acme') {
+        acmeTab.className   = 'tenant-tab active-acme';
+        globexTab.className = 'tenant-tab';
+      } else {
+        acmeTab.className   = 'tenant-tab';
+        globexTab.className = 'tenant-tab active-globex';
+      }
+
+      const label = tenant === 'acme' ? 'Acme Corp' : 'Globex Corporation';
+      appendNotice(`Switched to <strong>${label}</strong>`);
+    }
+
+    function appendNotice(html) {
+      const area = document.getElementById('messages-area');
+      const el   = document.createElement('div');
+      el.className = 'system-notice';
+      el.innerHTML = html;
+      area.appendChild(el);
+      scrollToBottom();
+    }
+
+    async function handleSend() {
+      const input = document.getElementById('question-input');
+      const q     = input.value.trim();
+      if (!q) return;
+      input.value = '';
+      await executeQuery({ tenant_id: currentTenant, question: q, top_k: 4 });
+    }
+
+    async function executeQuery(payload) {
+      const area = document.getElementById('messages-area');
+      const btn  = document.getElementById('send-btn');
+
+      // User bubble
+      const userRow = document.createElement('div');
+      userRow.className = 'message-row user';
+      userRow.innerHTML = `
+        <div class="avatar user-avatar"><img src="/static/user_avatar.jpg" alt="You"></div>
+        <div class="message-bubble">${escapeHtml(payload.question)}</div>
+      `;
+      area.appendChild(userRow);
+      scrollToBottom();
+
+      // Bot loading bubble
+      const botRow = document.createElement('div');
+      botRow.className = 'message-row bot';
+      botRow.innerHTML = `
+        <div class="avatar bot-avatar"><img src="/static/bot_avatar.jpg" alt="AI"></div>
+        <div class="message-bubble" id="active-bubble">
+          <div style="display:flex; align-items:center; gap:0.6rem; color:var(--text-secondary);">
+            <div class="spinner"></div>
+            <span>Querying ${currentTenant === 'acme' ? 'Acme' : 'Globex'} collection…</span>
+          </div>
+        </div>
+      `;
+      area.appendChild(botRow);
+      scrollToBottom();
+      btn.disabled = true;
+
+      try {
+        const resp = await fetch('/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        const bubble = document.getElementById('active-bubble');
+        bubble.removeAttribute('id');
+
+        if (!resp.ok) {
+          bubble.className = 'message-bubble error-bubble';
+          bubble.innerHTML = `<strong>HTTP ${resp.status} — </strong>${escapeHtml(data.detail || JSON.stringify(data))}`;
+        } else {
+          const tenantColor = currentTenant === 'acme' ? '#60A5FA' : '#34D399';
+          let sourcesHtml   = '';
+
+          if (data.sources && data.sources.length > 0) {
+            const uid = 'cit-' + Date.now();
+            sourcesHtml = `
+              <div class="citations-toggle" onclick="toggleCitations('${uid}')">
+                <div class="citations-toggle-left">
+                  📎 Source Citations
+                  <span class="citations-badge">${data.sources.length}</span>
+                </div>
+                <span class="citations-chevron" id="chev-${uid}">▼</span>
+              </div>
+              <div class="citations-body" id="${uid}">
+                <div class="citations-inner">
+                  ${data.sources.map(s => `
+                    <div class="source-card">
+                      <div class="source-header">
+                        <a class="source-link" href="${s.url || '#'}" target="_blank">
+                          📄 ${escapeHtml(s.source_file)} — Page ${s.page_number ?? s.page_start} ↗
+                        </a>
+                        <span class="source-score">sim ${s.similarity ?? '—'}</span>
+                      </div>
+                      <div class="source-snippet">&quot;${escapeHtml((s.snippet || s.excerpt || '').substring(0, 200))}…&quot;</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>`;
+          }
+
+          bubble.innerHTML = `
+            <div class="tenant-label" style="color:${tenantColor}">${escapeHtml(data.tenant_name)}</div>
+            <div>${formatAnswer(data.answer)}</div>
+            ${sourcesHtml}
+          `;
+        }
+      } catch (err) {
+        const bubble = document.getElementById('active-bubble') || botRow.querySelector('.message-bubble');
+        if (bubble) {
+          bubble.className = 'message-bubble error-bubble';
+          bubble.innerHTML = `<strong>Connection error:</strong> ${escapeHtml(err.message)}`;
+        }
+      } finally {
+        btn.disabled = false;
+        scrollToBottom();
+      }
+    }
+
+    function toggleCitations(uid) {
+      const body  = document.getElementById(uid);
+      const chev  = document.getElementById('chev-' + uid);
+      const isOpen = body.classList.contains('open');
+      body.classList.toggle('open', !isOpen);
+      chev.classList.toggle('open', !isOpen);
+    }
+
+    function formatAnswer(text) {
+      if (!text) return '<em style="color:var(--text-muted)">No answer generated.</em>';
+      return escapeHtml(text).replace(/\n/g, '<br>');
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+  </script>
+</body>
+</html>

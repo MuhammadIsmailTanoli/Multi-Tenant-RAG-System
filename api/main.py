@@ -13,13 +13,14 @@ Full RAG pipeline on POST /query:
 
 from typing import Any, Dict, List, Optional
 import logging
+import re
 from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -150,6 +151,11 @@ HANDBOOKS_DIR = PROJECT_ROOT / "data" / "handbooks"
 HANDBOOKS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/documents", StaticFiles(directory=str(HANDBOOKS_DIR)), name="documents")
 
+# Serve frontend assets (avatars, etc.) from /static/
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
+FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -209,13 +215,27 @@ async def root() -> Dict[str, Any]:
         "service": "Multi-Tenant RAG System API",
         "version": "1.0.0",
         "docs_url": "/docs",
+        "test_console_url": "/chat",
         "endpoints": {
+            "chat": "GET /chat",
             "query": "POST /query",
             "tenants": "GET /tenants",
             "health": "GET /health",
             "documents": "GET /documents/{filename}",
         },
     }
+
+
+@app.get("/chat", tags=["Testing"])
+async def testing_chat_ui():
+    """Serve the interactive testing chat console web page."""
+    frontend_path = PROJECT_ROOT / "frontend" / "index.html"
+    if not frontend_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Testing frontend index.html not found.",
+        )
+    return FileResponse(str(frontend_path), media_type="text/html")
 
 
 @app.get("/health", tags=["System"])
@@ -383,7 +403,21 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
         )
 
     # --- Step 6: Format sources and return response ---
-    sources = format_sources_for_response(chunks)
+    # Only surface citations when the LLM actually grounded its answer in context.
+    # Suppress sources if the answer signals nothing was found.
+    _no_info_phrases = (
+        "not in the provided",
+        "don't have that information",
+        "do not have that information",
+        "cannot find",
+        "no relevant",
+        "not mentioned",
+        "not available in",
+        "the provided documents do not",
+    )
+    answer_lower = (answer or "").lower()
+    answer_is_grounded = not any(phrase in answer_lower for phrase in _no_info_phrases)
+    sources = format_sources_for_response(chunks) if answer_is_grounded else []
 
     return QueryResponse(
         tenant_id=tenant_config.id,

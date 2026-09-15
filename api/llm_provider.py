@@ -28,7 +28,7 @@ logger = logging.getLogger("api.llm_provider")
 DEFAULT_PROVIDER = "gemini"
 DEFAULT_MODELS: Dict[str, str] = {
     "gemini": "gemini-3.6-flash",
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "qwen/qwen3.8-27b",
     "claude": "claude-3-5-haiku-20241022",
 }
 
@@ -179,7 +179,7 @@ class GroqAdapter(BaseLLMAdapter):
         model: Optional[str] = None,
     ):
         self._api_key = api_key or os.getenv("GROQ_API_KEY")
-        self._model = model or os.getenv("LLM_MODEL") or DEFAULT_MODELS["groq"]
+        self._model = model or os.getenv("GROQ_MODEL") or os.getenv("LLM_MODEL") or DEFAULT_MODELS["groq"]
 
     @property
     def provider_name(self) -> str:
@@ -214,6 +214,7 @@ class GroqAdapter(BaseLLMAdapter):
                 model=self._model,
                 messages=messages,
                 temperature=temperature,
+                max_tokens=800,
             )
             return completion.choices[0].message.content.strip()
         except ImportError:
@@ -232,6 +233,7 @@ class GroqAdapter(BaseLLMAdapter):
             "model": self._model,
             "messages": messages,
             "temperature": temperature,
+            "max_tokens": 800,
         }
         with httpx.Client(timeout=60.0) as client:
             resp = client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=body)
@@ -361,6 +363,10 @@ def get_llm_adapter(
     Raises:
         ValueError: If provider is unsupported.
     """
+    # Re-read .env on every call so model/provider changes take effect without
+    # restarting uvicorn (override=True overwrites already-set os.environ values).
+    load_dotenv(PROJECT_ROOT / ".env", override=True)
+
     raw_provider = provider_name or os.getenv("LLM_PROVIDER") or DEFAULT_PROVIDER
     clean_provider = raw_provider.strip().lower()
 
