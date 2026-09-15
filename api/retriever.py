@@ -46,6 +46,7 @@ class RetrievedChunk:
     page_end: int
     chunk_index: int
     token_count: int
+    page_number: int = 1
     distance: Optional[float] = None
     similarity: Optional[float] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -183,13 +184,18 @@ def retrieve_tenant_chunks(
         # Cosine distance to similarity: similarity = 1 - distance
         similarity = max(0.0, 1.0 - distance) if distance is not None else None
 
+        p_start = int(metadata.get("page_start") or metadata.get("page_number", 1))
+        p_end = int(metadata.get("page_end") or p_start)
+        p_num = int(metadata.get("page_number") or p_start)
+
         chunk = RetrievedChunk(
             chunk_id=str(chunk_id),
             text=str(doc_text),
             tenant_id=chunk_tenant,
             source_file=str(metadata.get("source_file", "")),
-            page_start=int(metadata.get("page_start", 1)),
-            page_end=int(metadata.get("page_end", 1)),
+            page_number=p_num,
+            page_start=p_start,
+            page_end=p_end,
             chunk_index=int(metadata.get("chunk_index", 0)),
             token_count=int(metadata.get("token_count", 0)),
             distance=float(distance) if distance is not None else None,

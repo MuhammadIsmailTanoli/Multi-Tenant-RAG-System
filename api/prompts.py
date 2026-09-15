@@ -110,6 +110,7 @@ def format_sources_for_response(chunks: List[RetrievedChunk]) -> List[dict]:
             "chunk_id": chunk.chunk_id,
             "citation": chunk.citation,
             "source_file": chunk.source_file,
+            "page_number": getattr(chunk, "page_number", chunk.page_start),
             "page_start": chunk.page_start,
             "page_end": chunk.page_end,
             "chunk_index": chunk.chunk_index,

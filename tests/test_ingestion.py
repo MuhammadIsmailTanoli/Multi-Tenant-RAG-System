@@ -100,10 +100,25 @@ class TestMultiTenantIngestion:
         for chunk in acme_chunks:
             assert chunk.tenant_id == "acme"
             assert chunk.chunk_id.startswith("acme_chunk_")
+            assert chunk.page_number >= 1
             assert chunk.page_start >= 1
             assert chunk.page_end >= chunk.page_start
+            assert chunk.page_number == chunk.page_start
+            assert chunk.metadata.get("page_number") == chunk.page_number
             assert len(chunk.text.strip()) > 0
             assert chunk.token_count > 0
+
+    def test_chunk_pdf_per_page(self):
+        """Verify chunk_pdf_per_page extracts per-page text and assigns page numbers."""
+        from ingestion.chunking import chunk_pdf_per_page
+        tenant = get_tenant("acme")
+        chunks = chunk_pdf_per_page(tenant.pdf_path, tenant_id="acme")
+        assert len(chunks) > 0
+        for chunk in chunks:
+            assert chunk.page_number >= 1
+            assert chunk.page_start == chunk.page_number
+            assert chunk.metadata.get("page_number") == chunk.page_number
+            assert "Acme" in chunk.source_file
 
     def test_tenant_collections_populated_and_isolated(
         self, test_chroma_client, mock_embedder

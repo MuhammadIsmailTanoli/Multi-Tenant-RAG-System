@@ -45,10 +45,11 @@ CHUNKING STRATEGY EXPLANATION & ARCHITECTURAL RATIONALE
 ================================================================================
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+from pathlib import Path
 import re
 import logging
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ingestion.loader import DocumentPage
 
@@ -91,6 +92,10 @@ class DocumentChunk(BaseModel):
     tenant_id: str = Field(..., description="Tenant identifier to enforce data boundary.")
     text: str = Field(..., description="Cleaned chunk text content.")
     token_count: int = Field(..., description="Estimated or exact token count.")
+    page_number: int = Field(
+        default=1,
+        description="Primary source page number where this chunk originates (1-indexed).",
+    )
     page_start: int = Field(..., description="First document page spanned by this chunk (1-indexed).")
     page_end: int = Field(..., description="Last document page spanned by this chunk (1-indexed).")
     source_file: str = Field(..., description="Source handbook PDF filename.")
@@ -99,6 +104,14 @@ class DocumentChunk(BaseModel):
         default_factory=dict,
         description="Metadata dictionary for vector store indexing.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def set_default_page_number(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "page_number" not in data or data["page_number"] is None:
+                data["page_number"] = data.get("page_start", 1)
+        return data
 
 
 class TextChunker:
@@ -217,6 +230,7 @@ class TextChunker:
                 tenant_id=resolved_tenant,
                 text=chunk_text,
                 token_count=actual_tokens,
+                page_number=page_start,
                 page_start=page_start,
                 page_end=page_end,
                 source_file=source_file,
@@ -225,6 +239,7 @@ class TextChunker:
                     "chunk_id": f"{resolved_tenant}_chunk_{chunk_counter:04d}",
                     "tenant_id": resolved_tenant,
                     "source_file": source_file,
+                    "page_number": page_start,
                     "page_start": page_start,
                     "page_end": page_end,
                     "chunk_index": chunk_counter,
@@ -277,3 +292,33 @@ def chunk_tenant_document(
         overlap_tokens=overlap_tokens,
     )
     return chunker.chunk_pages(pages)
+
+
+def chunk_pdf_per_page(
+    pdf_path: str | Path,
+    tenant_id: str,
+    chunk_size_tokens: int = DEFAULT_CHUNK_SIZE_TOKENS,
+    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+) -> List[DocumentChunk]:
+    """Extract text per page from a PDF and chunk while recording source page numbers.
+
+    Extracts text page-by-page from the source PDF, assigns source page numbers
+    to each segment, and generates semantic chunks preserving page attribution.
+
+    Args:
+        pdf_path: Filesystem path to the tenant PDF document.
+        tenant_id: Unique identifier for the owning tenant.
+        chunk_size_tokens: Maximum target tokens per chunk.
+        overlap_tokens: Overlap tokens for boundary continuity.
+
+    Returns:
+        List of DocumentChunk instances with verified page numbers.
+    """
+    from ingestion.loader import extract_text_from_pdf
+
+    pages = extract_text_from_pdf(pdf_path, tenant_id=tenant_id)
+    return chunk_tenant_document(
+        pages=pages,
+        chunk_size_tokens=chunk_size_tokens,
+        overlap_tokens=overlap_tokens,
+    )
