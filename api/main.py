@@ -13,13 +13,21 @@ Full RAG pipeline on POST /query:
 
 from typing import Any, Dict, List, Optional
 import logging
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from ingestion.config import get_settings, load_tenants_config, get_tenant, TenantConfig
+from ingestion.config import (
+    get_settings,
+    load_tenants_config,
+    get_tenant,
+    TenantConfig,
+    PROJECT_ROOT,
+)
 from api.retriever import retrieve_tenant_chunks, TenantIsolationError, CollectionNotFoundError
 from api.prompts import build_rag_prompt, format_sources_for_response, RAG_SYSTEM_PROMPT
 from api.llm_provider import get_llm_adapter
@@ -129,6 +137,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve source tenant handbook PDFs statically from /documents/{filename}
+HANDBOOKS_DIR = PROJECT_ROOT / "data" / "handbooks"
+HANDBOOKS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/documents", StaticFiles(directory=str(HANDBOOKS_DIR)), name="documents")
+
 
 @app.get("/", tags=["System"])
 async def root() -> Dict[str, Any]:
@@ -141,6 +154,7 @@ async def root() -> Dict[str, Any]:
             "query": "POST /query",
             "tenants": "GET /tenants",
             "health": "GET /health",
+            "documents": "GET /documents/{filename}",
         },
     }
 

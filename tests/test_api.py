@@ -103,3 +103,34 @@ def test_query_case_insensitivity():
     assert response.status_code == 200
     data = response.json()
     assert data["tenant_id"] == "acme"
+
+
+def test_serve_acme_pdf_statically():
+    """Verify that Acme handbook PDF is served statically from /documents/."""
+    response = client.get("/documents/Acme Corp Employee Handbook.pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert len(response.content) > 10000
+
+
+def test_serve_globex_pdf_statically():
+    """Verify that Globex handbook PDF is served statically from /documents/."""
+    response = client.get("/documents/Globex Corporation Employee Handbook.pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert len(response.content) > 10000
+
+
+def test_serve_nonexistent_pdf_returns_404():
+    """Verify that requesting a missing PDF returns HTTP 404."""
+    response = client.get("/documents/nonexistent_handbook.pdf")
+    assert response.status_code == 404
+
+
+def test_root_endpoint_metadata():
+    """Verify root endpoint advertises available endpoints including /documents."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert "documents" in data["endpoints"]
+    assert "/documents/{filename}" in data["endpoints"]["documents"]
