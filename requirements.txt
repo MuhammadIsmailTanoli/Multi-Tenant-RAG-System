@@ -12,6 +12,7 @@ chromadb>=0.5.5
 
 # LLM & Embedding Integration
 openai>=1.40.0
+sentence-transformers>=3.0.0
 
 # Utilities & Configuration
 python-dotenv>=1.0.1

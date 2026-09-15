@@ -114,7 +114,7 @@ class Settings(BaseSettings):
         description="API Key for OpenAI embeddings and completions.",
     )
     embedding_model: str = Field(
-        default="text-embedding-3-small",
+        default="Qwen/Qwen3-Embedding-0.6B",
         description="Embedding model name for vector representations.",
     )
     llm_model: str = Field(
