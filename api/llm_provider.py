@@ -98,52 +98,76 @@ class GeminiAdapter(BaseLLMAdapter):
                 "Missing Gemini API key. Please set GEMINI_API_KEY (or GOOGLE_API_KEY) in your .env file."
             )
 
-        # Primary: Official google-genai SDK
-        try:
-            from google import genai
-            from google.genai import types
-
-            client = genai.Client(api_key=self._api_key)
-            config = types.GenerateContentConfig(
-                temperature=temperature,
-                system_instruction=system_prompt if system_prompt else None,
-            )
-            response = client.models.generate_content(
-                model=self._model,
-                contents=prompt,
-                config=config,
-            )
-            if response.text:
-                return response.text.strip()
-            return ""
-        except ImportError:
-            pass
-        except Exception as exc:
-            logger.warning("google.genai SDK call failed (%s). Falling back to REST API.", exc)
-
-        # Fallback: Direct REST API via httpx
+        import time
         import httpx
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent?key={self._api_key}"
-        contents = [{"role": "user", "parts": [{"text": prompt}]}]
-        body = {
-            "contents": contents,
-            "generationConfig": {"temperature": temperature},
-        }
-        if system_prompt:
-            body["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+        max_retries = 3
+        last_error = None
 
-        with httpx.Client(timeout=60.0) as client:
-            resp = client.post(url, json=body)
-            if resp.status_code != 200:
-                raise RuntimeError(
-                    f"Gemini API returned error {resp.status_code}: {resp.text}"
-                )
-            data = resp.json()
+        for attempt in range(1, max_retries + 1):
+            # 1. Try official google-genai SDK
             try:
-                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            except (KeyError, IndexError) as parse_err:
-                raise RuntimeError(f"Failed to parse Gemini response: {data}") from parse_err
+                from google import genai
+                from google.genai import types
+
+                client = genai.Client(api_key=self._api_key)
+                config = types.GenerateContentConfig(
+                    temperature=temperature,
+                    system_instruction=system_prompt if system_prompt else None,
+                )
+                response = client.models.generate_content(
+                    model=self._model,
+                    contents=prompt,
+                    config=config,
+                )
+                if response.text:
+                    return response.text.strip()
+                return ""
+            except ImportError:
+                pass
+            except Exception as exc:
+                last_error = exc
+                logger.warning("google.genai SDK attempt %d failed (%s). Trying REST fallback.", attempt, exc)
+
+            # 2. Fallback: Direct REST API via httpx with retry
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent?key={self._api_key}"
+            contents = [{"role": "user", "parts": [{"text": prompt}]}]
+            body = {
+                "contents": contents,
+                "generationConfig": {"temperature": temperature},
+            }
+            if system_prompt:
+                body["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+
+            try:
+                with httpx.Client(timeout=60.0) as client:
+                    resp = client.post(url, json=body)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    last_error = RuntimeError(f"Gemini API returned error {resp.status_code}: {resp.text}")
+                    if resp.status_code in (503, 429) and attempt < max_retries:
+                        sleep_s = attempt * 2
+                        logger.warning(
+                            "Gemini API returned %d (%s). Retrying in %ds (attempt %d/%d)...",
+                            resp.status_code,
+                            self._model,
+                            sleep_s,
+                            attempt,
+                            max_retries,
+                        )
+                        time.sleep(sleep_s)
+                        continue
+                    if resp.status_code != 200:
+                        raise last_error
+            except Exception as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    time.sleep(attempt * 2)
+                    continue
+                raise last_error
+
+        raise RuntimeError(f"Gemini generation failed after {max_retries} attempts: {last_error}")
 
 
 class GroqAdapter(BaseLLMAdapter):
