@@ -13,6 +13,9 @@ chromadb>=0.5.5
 # LLM & Embedding Integration
 openai>=1.40.0
 sentence-transformers>=3.0.0
+google-genai>=1.0.0
+groq>=0.11.0
+anthropic>=0.34.0
 
 # Utilities & Configuration
 python-dotenv>=1.0.1
