@@ -113,10 +113,15 @@ def ingest_tenant(
 
     for chunk in chunks:
         # Enforce tenant isolation tagging as a secondary safeguard
+        page_val = int(getattr(chunk, "page_number", chunk.page_start))
+        source_val = str(chunk.source_file)
         meta = {
             "tenant_id": str(tenant_id),
+            "page": page_val,
+            "page_number": page_val,
+            "source_pdf": source_val,
+            "source_file": source_val,
             "chunk_id": str(chunk.chunk_id),
-            "source_file": str(chunk.source_file),
             "page_start": int(chunk.page_start),
             "page_end": int(chunk.page_end),
             "chunk_index": int(chunk.chunk_index),

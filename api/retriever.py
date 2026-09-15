@@ -184,15 +184,15 @@ def retrieve_tenant_chunks(
         # Cosine distance to similarity: similarity = 1 - distance
         similarity = max(0.0, 1.0 - distance) if distance is not None else None
 
-        p_start = int(metadata.get("page_start") or metadata.get("page_number", 1))
+        p_start = int(metadata.get("page") or metadata.get("page_start") or metadata.get("page_number", 1))
         p_end = int(metadata.get("page_end") or p_start)
-        p_num = int(metadata.get("page_number") or p_start)
+        p_num = int(metadata.get("page") or metadata.get("page_number") or p_start)
 
         chunk = RetrievedChunk(
             chunk_id=str(chunk_id),
             text=str(doc_text),
             tenant_id=chunk_tenant,
-            source_file=str(metadata.get("source_file", "")),
+            source_file=str(metadata.get("source_pdf") or metadata.get("source_file", "")),
             page_number=p_num,
             page_start=p_start,
             page_end=p_end,

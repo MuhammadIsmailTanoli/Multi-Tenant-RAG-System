@@ -157,6 +157,25 @@ class TestMultiTenantIngestion:
         assert acme_col.count() == acme_count
         assert globex_col.count() == globex_count
 
+        # Verify metadata in Chroma strictly includes page, source_pdf, and tenant_id
+        acme_sample = acme_col.get(limit=10, include=["metadatas"])
+        for meta in acme_sample["metadatas"]:
+            assert "page" in meta, "Chroma metadata missing 'page'"
+            assert "source_pdf" in meta, "Chroma metadata missing 'source_pdf'"
+            assert "tenant_id" in meta, "Chroma metadata missing 'tenant_id'"
+            assert meta["tenant_id"] == "acme"
+            assert meta["page"] >= 1
+            assert "Acme" in meta["source_pdf"]
+
+        globex_sample = globex_col.get(limit=10, include=["metadatas"])
+        for meta in globex_sample["metadatas"]:
+            assert "page" in meta, "Chroma metadata missing 'page'"
+            assert "source_pdf" in meta, "Chroma metadata missing 'source_pdf'"
+            assert "tenant_id" in meta, "Chroma metadata missing 'tenant_id'"
+            assert meta["tenant_id"] == "globex"
+            assert meta["page"] >= 1
+            assert "Globex" in meta["source_pdf"]
+
     def test_embedding_dimensionality(self, test_chroma_client, mock_embedder):
         """Verify indexed embeddings strictly match the required 1024-dimensional space."""
         tenants = load_tenants_config()
