@@ -139,6 +139,7 @@ def format_sources_for_response(chunks: List[RetrievedChunk]) -> List[dict]:
             "chunk_index": chunk.chunk_index,
             "similarity": round(chunk.similarity, 4) if chunk.similarity is not None else None,
             "snippet": snippet,
+            "excerpt": snippet,
             "url": url,
         }
 

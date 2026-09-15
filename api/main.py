@@ -16,10 +16,15 @@ import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+# Validation constraints
+MAX_QUESTION_LENGTH: int = 1000
 
 from ingestion.config import (
     get_settings,
@@ -45,12 +50,15 @@ class QueryRequest(BaseModel):
 
     tenant_id: str = Field(
         ...,
+        min_length=1,
         description="Unique identifier of the tenant (e.g., 'acme', 'globex').",
         examples=["acme"],
     )
     question: str = Field(
         ...,
-        description="User question to be answered from the tenant document corpus.",
+        min_length=1,
+        max_length=MAX_QUESTION_LENGTH,
+        description=f"User question to be answered from the tenant document corpus (1-{MAX_QUESTION_LENGTH} characters).",
         examples=["What is the probationary period duration?"],
     )
     top_k: int = Field(
@@ -141,6 +149,57 @@ app.add_middleware(
 HANDBOOKS_DIR = PROJECT_ROOT / "data" / "handbooks"
 HANDBOOKS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/documents", StaticFiles(directory=str(HANDBOOKS_DIR)), name="documents")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Format Pydantic / schema validation failures into clear, human-readable error messages."""
+    errors: List[str] = []
+    for err in exc.errors():
+        loc_parts = [str(part) for part in err.get("loc", []) if part != "body"]
+        field_name = ".".join(loc_parts) if loc_parts else "body"
+        msg = err.get("msg", "Invalid value")
+        err_type = err.get("type", "")
+
+        if err_type == "missing":
+            errors.append(f"Missing required field '{field_name}'")
+        elif "string_too_long" in err_type:
+            errors.append(
+                f"The '{field_name}' field exceeds maximum allowed length of {MAX_QUESTION_LENGTH} characters"
+            )
+        elif "string_too_short" in err_type:
+            errors.append(f"The '{field_name}' field cannot be empty")
+        elif err_type == "json_invalid":
+            errors.append("Invalid JSON syntax in request body")
+        else:
+            errors.append(f"Invalid value for field '{field_name}': {msg}")
+
+    summary = "; ".join(errors) if errors else "Malformed request payload."
+    detail_message = f"Malformed request: {summary}"
+    logger.warning(f"Rejected malformed request on {request.url.path}: {detail_message}")
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": detail_message,
+            "errors": exc.errors(),
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch unhandled server exceptions to prevent exposing internal stack traces or paths."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=getattr(exc, "headers", None),
+        )
+    logger.exception(f"Unhandled exception during {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An internal server error occurred while processing the request."},
+    )
 
 
 @app.get("/", tags=["System"])
@@ -234,11 +293,27 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     clean_tenant_id = request.tenant_id.strip().lower()
     clean_question = request.question.strip()
 
-    # --- Step 1 & 2: Input validation ---
+    # --- Step 1: Validate tenant_id ---
+    if not clean_tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The 'tenant_id' field cannot be empty or only whitespace.",
+        )
+
+    # --- Step 2: Validate question (non-empty & length bounds) ---
     if not clean_question:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The 'question' field cannot be empty or only whitespace.",
+        )
+
+    if len(clean_question) > MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"The 'question' field exceeds maximum allowed length of "
+                f"{MAX_QUESTION_LENGTH} characters (received {len(clean_question)} characters)."
+            ),
         )
 
     try:
