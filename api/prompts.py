@@ -7,8 +7,9 @@ Enforces strict grounded generation:
 - Prevents hallucination, prompt injection, and context escape.
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from api.retriever import RetrievedChunk
+from ingestion.config import get_settings
 
 
 # ---------------------------------------------------------------------------
@@ -96,25 +97,63 @@ def _build_no_context_prompt(
 
 
 def format_sources_for_response(chunks: List[RetrievedChunk]) -> List[dict]:
-    """Convert RetrievedChunk list into serializable source citation dicts.
+    """Convert RetrievedChunk list into serializable, deduplicated source citation dicts.
+
+    Each citation includes:
+    - A clickable ``url`` in the format ``{BASE_URL}/documents/{pdf_filename}#page={n}``
+      so PDF viewers can jump directly to the referenced page.
+    - A short ``snippet`` (up to 300 chars) quoted from the chunk text.
+    - Deduplication by ``(source_file, page_number)`` — if the same page is cited by
+      multiple chunks, only the highest-similarity entry is kept.
 
     Args:
-        chunks: List of verified RetrievedChunk objects.
+        chunks: List of verified RetrievedChunk objects (already tenant-isolated).
 
     Returns:
-        List of source dicts suitable for inclusion in the API response.
+        Deduplicated list of source dicts, ordered by descending similarity.
     """
-    sources = []
+    base_url = get_settings().base_url.rstrip("/")
+
+    # Deduplicate: keep the best (highest similarity) chunk per (source_file, page)
+    seen: Dict[tuple, dict] = {}
+
     for chunk in chunks:
-        sources.append({
+        page = getattr(chunk, "page_number", chunk.page_start) or chunk.page_start
+        source_file = chunk.source_file or ""
+        dedup_key = (source_file, page)
+
+        # Build the clickable page-anchored URL
+        url = f"{base_url}/documents/{source_file}#page={page}" if source_file else None
+
+        # Short quoted snippet (up to 300 characters)
+        raw_text = chunk.text.strip()
+        snippet = raw_text[:300] + ("..." if len(raw_text) > 300 else "")
+
+        entry = {
             "chunk_id": chunk.chunk_id,
             "citation": chunk.citation,
-            "source_file": chunk.source_file,
-            "page_number": getattr(chunk, "page_number", chunk.page_start),
+            "source_file": source_file,
+            "page_number": page,
             "page_start": chunk.page_start,
             "page_end": chunk.page_end,
             "chunk_index": chunk.chunk_index,
             "similarity": round(chunk.similarity, 4) if chunk.similarity is not None else None,
-            "excerpt": chunk.text[:200].strip() + ("..." if len(chunk.text) > 200 else ""),
-        })
-    return sources
+            "snippet": snippet,
+            "url": url,
+        }
+
+        # Keep only the highest-similarity citation per page
+        if dedup_key not in seen:
+            seen[dedup_key] = entry
+        else:
+            existing_sim = seen[dedup_key]["similarity"] or 0.0
+            new_sim = entry["similarity"] or 0.0
+            if new_sim > existing_sim:
+                seen[dedup_key] = entry
+
+    # Return sorted by descending similarity
+    return sorted(
+        seen.values(),
+        key=lambda e: e["similarity"] or 0.0,
+        reverse=True,
+    )

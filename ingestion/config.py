@@ -131,6 +131,7 @@ class Settings(BaseSettings):
     )
     api_host: str = Field(default="0.0.0.0", description="API server host.")
     api_port: int = Field(default=8000, description="API server port.")
+    base_url: str = Field(default="http://localhost:8000", description="Base URL for public links and documents.")
     log_level: str = Field(default="INFO", description="Logging verbosity level.")
 
     model_config = SettingsConfigDict(
