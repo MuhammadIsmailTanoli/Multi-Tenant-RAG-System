@@ -14,6 +14,7 @@ from api.prompts import (
     RAG_SYSTEM_PROMPT,
     build_rag_prompt,
     format_sources_for_response,
+    clean_rag_response,
 )
 
 
@@ -108,3 +109,27 @@ def test_format_sources_for_response():
     assert src["chunk_index"] == 2
     assert src["similarity"] == 0.9123
     assert "All employees receive full medical coverage" in src["excerpt"]
+
+
+def test_clean_rag_response_removes_preambles():
+    """Verify that introductory preambles and section references are stripped."""
+    sample_text = (
+        "Based on the provided documents, Acme Corp’s remote work policy is outlined in Section 3: Multiversal Remote Work Policy.\n\n"
+        "### Remote Work Policy\n"
+        "- Employees may work remotely up to 3 days per week."
+    )
+    cleaned = clean_rag_response(sample_text)
+    assert "Based on the provided documents" not in cleaned
+    assert "outlined in Section 3" not in cleaned
+    assert "### Remote Work Policy" in cleaned
+    assert "Employees may work remotely up to 3 days per week." in cleaned
+
+
+def test_clean_rag_response_removes_inline_preambles():
+    """Verify inline preamble sentences at the beginning are removed."""
+    sample_text = (
+        "According to the provided documents, employees are eligible for full medical coverage starting on day one."
+    )
+    cleaned = clean_rag_response(sample_text)
+    assert "According to the provided documents" not in cleaned
+    assert "Employees are eligible for full medical coverage" in cleaned

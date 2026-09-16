@@ -35,7 +35,7 @@ from ingestion.config import (
     PROJECT_ROOT,
 )
 from api.retriever import retrieve_tenant_chunks, TenantIsolationError, CollectionNotFoundError
-from api.prompts import build_rag_prompt, format_sources_for_response, RAG_SYSTEM_PROMPT
+from api.prompts import build_rag_prompt, format_sources_for_response, RAG_SYSTEM_PROMPT, clean_rag_response
 from api.llm_provider import get_llm_adapter
 
 # Setup logger
@@ -387,11 +387,12 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     # --- Step 5: Generate answer via configured LLM provider ---
     try:
         llm = get_llm_adapter()
-        answer = llm.generate_answer(
+        raw_answer = llm.generate_answer(
             prompt=prompt,
             system_prompt=RAG_SYSTEM_PROMPT,
             temperature=0.0,
         )
+        answer = clean_rag_response(raw_answer)
         logger.info(
             f"Generated answer for tenant '{clean_tenant_id}' via '{llm.provider_name}/{llm.model_name}'."
         )
@@ -402,29 +403,13 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
             detail=f"Answer generation failed: {str(exc)}",
         )
 
-    # --- Step 6: Format sources and return response ---
-    # Only surface citations when the LLM actually grounded its answer in context.
-    # Suppress sources if the answer signals nothing was found.
-    _no_info_phrases = (
-        "not in the provided",
-        "don't have that information",
-        "do not have that information",
-        "cannot find",
-        "no relevant",
-        "not mentioned",
-        "not available in",
-        "the provided documents do not",
-    )
-    answer_lower = (answer or "").lower()
-    answer_is_grounded = not any(phrase in answer_lower for phrase in _no_info_phrases)
-    sources = format_sources_for_response(chunks) if answer_is_grounded else []
-
+    # --- Step 6: Return response ---
     return QueryResponse(
         tenant_id=tenant_config.id,
         tenant_name=tenant_config.name,
         question=clean_question,
         answer=answer,
-        sources=sources,
+        sources=[],
         chunks_retrieved=len(chunks),
         message=f"Answer generated from {len(chunks)} document chunk(s) for {tenant_config.name} via {llm.provider_name}.",
     )

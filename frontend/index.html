@@ -350,115 +350,6 @@
       margin: 0.9rem 0;
     }
 
-    /* ── Sources accordion ── */
-    .citations-toggle {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: 0.85rem;
-      padding: 0.6rem 0.85rem;
-      border-radius: 9px;
-      border: 1px solid var(--border-subtle);
-      background: rgba(255,255,255,0.03);
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.15s ease, border-color 0.15s ease;
-    }
-
-    .citations-toggle:hover {
-      background: rgba(255,255,255,0.06);
-      border-color: rgba(255,255,255,0.15);
-    }
-
-    .citations-toggle-left {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: var(--text-secondary);
-    }
-
-    .citations-badge {
-      background: rgba(99,102,241,0.2);
-      color: #818CF8;
-      border: 1px solid rgba(99,102,241,0.3);
-      border-radius: 9999px;
-      padding: 0.1rem 0.55rem;
-      font-size: 0.72rem;
-      font-weight: 700;
-    }
-
-    .citations-chevron {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      transition: transform 0.25s ease;
-    }
-
-    .citations-chevron.open { transform: rotate(180deg); }
-
-    .citations-body {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease, opacity 0.25s ease;
-      opacity: 0;
-    }
-
-    .citations-body.open {
-      max-height: 600px;
-      opacity: 1;
-    }
-
-    .citations-inner {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-      padding-top: 0.6rem;
-    }
-
-    .source-card {
-      background: rgba(0,0,0,0.25);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 0.55rem 0.75rem;
-      font-size: 0.79rem;
-      transition: border-color 0.15s ease;
-    }
-
-    .source-card:hover { border-color: rgba(255,255,255,0.18); }
-
-    .source-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 0.3rem;
-    }
-
-    .source-link {
-      color: #818CF8;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.8rem;
-    }
-
-    .source-link:hover { text-decoration: underline; }
-
-    .source-score {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.7rem;
-      padding: 0.12rem 0.4rem;
-      border-radius: 4px;
-      background: rgba(255,255,255,0.05);
-      color: var(--text-secondary);
-    }
-
-    .source-snippet {
-      color: var(--text-secondary);
-      font-size: 0.77rem;
-      line-height: 1.4;
-      font-style: italic;
-    }
-
     /* ── Input bar ── */
     .input-area {
       padding: 1rem 0 1.25rem;
@@ -675,39 +566,9 @@
           bubble.innerHTML = `<strong>HTTP ${resp.status} — </strong>${escapeHtml(data.detail || JSON.stringify(data))}`;
         } else {
           const tenantColor = currentTenant === 'acme' ? '#60A5FA' : '#34D399';
-          let sourcesHtml   = '';
-
-          if (data.sources && data.sources.length > 0) {
-            const uid = 'cit-' + Date.now();
-            sourcesHtml = `
-              <div class="citations-toggle" onclick="toggleCitations('${uid}')">
-                <div class="citations-toggle-left">
-                  📎 Source Citations
-                  <span class="citations-badge">${data.sources.length}</span>
-                </div>
-                <span class="citations-chevron" id="chev-${uid}">▼</span>
-              </div>
-              <div class="citations-body" id="${uid}">
-                <div class="citations-inner">
-                  ${data.sources.map(s => `
-                    <div class="source-card">
-                      <div class="source-header">
-                        <a class="source-link" href="${s.url || '#'}" target="_blank">
-                          📄 ${escapeHtml(s.source_file)} — Page ${s.page_number ?? s.page_start} ↗
-                        </a>
-                        <span class="source-score">sim ${s.similarity ?? '—'}</span>
-                      </div>
-                      <div class="source-snippet">&quot;${escapeHtml((s.snippet || s.excerpt || '').substring(0, 200))}…&quot;</div>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>`;
-          }
-
           bubble.innerHTML = `
             <div class="tenant-label" style="color:${tenantColor}">${escapeHtml(data.tenant_name)}</div>
             <div>${formatAnswer(data.answer)}</div>
-            ${sourcesHtml}
           `;
         }
       } catch (err) {
@@ -720,14 +581,6 @@
         btn.disabled = false;
         scrollToBottom();
       }
-    }
-
-    function toggleCitations(uid) {
-      const body  = document.getElementById(uid);
-      const chev  = document.getElementById('chev-' + uid);
-      const isOpen = body.classList.contains('open');
-      body.classList.toggle('open', !isOpen);
-      chev.classList.toggle('open', !isOpen);
     }
 
     function formatAnswer(text) {
