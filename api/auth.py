@@ -12,6 +12,8 @@ import logging
 import bcrypt
 import jwt
 from fastapi import Header, HTTPException, status
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 from ingestion.config import get_settings
 
@@ -171,3 +173,54 @@ def get_token_tenant(authorization: Optional[str] = Header(None)) -> str:
         )
 
     return str(token_tenant).strip().lower()
+
+
+def verify_google_id_token(
+    token: str,
+    client_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Verify a Google OAuth 2.0 ID token server-side and extract the claims.
+
+    Args:
+        token: Raw Google ID token JWT string from the frontend.
+        client_id: Optional Google Client ID to verify audience (aud claim).
+
+    Returns:
+        Dict containing decoded Google token claims (including 'sub', 'email', etc.).
+
+    Raises:
+        HTTPException 401 if token is invalid, expired, or verification fails.
+    """
+    if not token or not token.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Google ID token is required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    settings = get_settings()
+    expected_client_id = client_id or settings.google_client_id
+
+    try:
+        request = google_requests.Request()
+        id_info = google_id_token.verify_oauth2_token(
+            token.strip(),
+            request,
+            expected_client_id,
+        )
+        return id_info
+    except ValueError as exc:
+        logger.warning(f"Google ID token verification failed: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Authentication failed: Invalid or expired Google ID token ({str(exc)}).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as exc:
+        logger.error(f"Unexpected error during Google ID token verification: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Authentication failed: Unable to verify Google ID token ({str(exc)}).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+

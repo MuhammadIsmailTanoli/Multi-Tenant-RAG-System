@@ -43,6 +43,7 @@ from api.auth import (
     verify_company_password,
     create_tenant_token,
     get_token_tenant,
+    verify_google_id_token,
 )
 
 # Setup logger
@@ -79,6 +80,31 @@ class CompanyAuthResponse(BaseModel):
     expires_in: int = Field(..., description="Token lifespan in seconds.")
     message: str = Field(
         default="Authentication successful.",
+        description="Status message.",
+    )
+
+
+class GoogleAuthRequest(BaseModel):
+    """Request payload for verifying a Google Sign-In OAuth2 ID token."""
+
+    id_token: str = Field(
+        ...,
+        min_length=10,
+        description="Google OAuth2 ID token JWT string received from Google Sign-In.",
+        examples=["eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."],
+    )
+
+
+class GoogleAuthResponse(BaseModel):
+    """Response payload with extracted Google user profile claims."""
+
+    google_user_id: str = Field(..., description="Stable unique Google user ID (sub claim).")
+    email: str = Field(..., description="User's verified Google email address.")
+    email_verified: bool = Field(default=False, description="Whether email address is verified by Google.")
+    name: Optional[str] = Field(default=None, description="User's full name from Google profile.")
+    picture: Optional[str] = Field(default=None, description="URL to user's Google profile picture.")
+    message: str = Field(
+        default="Google authentication successful.",
         description="Status message.",
     )
 
@@ -319,6 +345,7 @@ async def root() -> Dict[str, Any]:
         "test_console_url": "/chat",
         "endpoints": {
             "auth": "POST /auth/company",
+            "google_auth": "POST /auth/google",
             "chat": "GET /chat",
             "query": "POST /query",
             "tenants": "GET /tenants",
@@ -499,6 +526,85 @@ async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
         tenant_id=clean_tenant_id,
         expires_in=settings.jwt_expiration_minutes * 60,
         message=f"Successfully authenticated as {tenant_config.name}.",
+    )
+
+
+@app.get(
+    "/auth/google/config",
+    tags=["Authentication"],
+    summary="Get public Google OAuth Client ID configuration for the frontend.",
+)
+async def get_google_auth_config() -> Dict[str, Any]:
+    """Return public Google OAuth Client ID for the web frontend."""
+    settings = get_settings()
+    client_id = settings.google_client_id or ""
+    return {
+        "client_id": client_id,
+        "enabled": bool(client_id),
+    }
+
+
+@app.post(
+    "/auth/google",
+    response_model=GoogleAuthResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Authentication"],
+    responses={
+        401: {
+            "description": "Authentication failed: Invalid, expired, or tampered Google ID token.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Authentication failed: Invalid or expired Google ID token (Token expired)."
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation failed: Malformed or missing input payload.",
+        },
+    },
+)
+async def authenticate_google(req: GoogleAuthRequest) -> GoogleAuthResponse:
+    """Verify Google OAuth 2.0 ID token server-side and extract the stable user ID (sub claim) and email."""
+    token_str = req.id_token.strip()
+    if not token_str:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Validation failed: 'id_token' field cannot be empty or contain only whitespace.",
+        )
+
+    # Server-side cryptographic token verification via google.oauth2.id_token.verify_oauth2_token
+    id_info = verify_google_id_token(token_str)
+
+    sub = id_info.get("sub")
+    email = id_info.get("email")
+
+    if not sub:
+        logger.warning("Google ID token verified but missing 'sub' claim.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Google ID token is missing required 'sub' claim.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not email:
+        logger.warning("Google ID token verified but missing 'email' claim.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Google ID token is missing required 'email' claim.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    logger.info(f"Successfully verified Google Sign-In for user '{email}' (sub: '{sub}').")
+
+    return GoogleAuthResponse(
+        google_user_id=str(sub),
+        email=str(email),
+        email_verified=bool(id_info.get("email_verified", False)),
+        name=id_info.get("name"),
+        picture=id_info.get("picture"),
+        message=f"Google authentication successful for {email}.",
     )
 
 

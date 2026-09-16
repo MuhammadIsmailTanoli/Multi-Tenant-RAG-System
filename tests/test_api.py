@@ -161,6 +161,99 @@ def test_company_auth_missing_fields_returns_422():
 
 
 # ---------------------------------------------------------------------------
+# Google Sign-In Authentication (/auth/google)
+# ---------------------------------------------------------------------------
+
+def test_google_auth_config():
+    """Verify GET /auth/google/config returns Google OAuth Client configuration."""
+    response = client.get("/auth/google/config")
+    assert response.status_code == 200
+    data = response.json()
+    assert "client_id" in data
+    assert "enabled" in data
+
+
+def test_google_auth_success():
+    """Verify POST /auth/google verifies Google ID token and returns stable user ID and email."""
+    mock_id_info = {
+        "sub": "google-user-1234567890",
+        "email": "developer@example.com",
+        "email_verified": True,
+        "name": "Alex Smith",
+        "picture": "https://lh3.googleusercontent.com/a/test-avatar",
+    }
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=mock_id_info):
+        response = client.post(
+            "/auth/google",
+            json={"id_token": "valid.mock.google.id.token.string"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["google_user_id"] == "google-user-1234567890"
+        assert data["email"] == "developer@example.com"
+        assert data["email_verified"] is True
+        assert data["name"] == "Alex Smith"
+        assert data["picture"] == "https://lh3.googleusercontent.com/a/test-avatar"
+        assert "developer@example.com" in data["message"]
+
+
+def test_google_auth_invalid_token_returns_401():
+    """Verify POST /auth/google rejects invalid or expired Google ID tokens with HTTP 401."""
+    with patch(
+        "google.oauth2.id_token.verify_oauth2_token",
+        side_effect=ValueError("Token used too early or expired"),
+    ):
+        response = client.post(
+            "/auth/google",
+            json={"id_token": "expired.invalid.token.payload"},
+        )
+        assert response.status_code == 401
+        data = response.json()
+        assert "Invalid or expired Google ID token" in data["detail"]
+
+
+def test_google_auth_missing_sub_returns_401():
+    """Verify POST /auth/google rejects tokens missing the required 'sub' claim with HTTP 401."""
+    mock_id_info = {
+        "email": "developer@example.com",
+        "email_verified": True,
+    }
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=mock_id_info):
+        response = client.post(
+            "/auth/google",
+            json={"id_token": "token.without.sub.claim"},
+        )
+        assert response.status_code == 401
+        data = response.json()
+        assert "missing required 'sub' claim" in data["detail"].lower()
+
+
+def test_google_auth_missing_email_returns_401():
+    """Verify POST /auth/google rejects tokens missing the required 'email' claim with HTTP 401."""
+    mock_id_info = {
+        "sub": "google-user-1234567890",
+        "email_verified": True,
+    }
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=mock_id_info):
+        response = client.post(
+            "/auth/google",
+            json={"id_token": "token.without.email.claim"},
+        )
+        assert response.status_code == 401
+        data = response.json()
+        assert "missing required 'email' claim" in data["detail"].lower()
+
+
+def test_google_auth_missing_id_token_returns_422():
+    """Verify POST /auth/google returns 422 when id_token field is missing or empty."""
+    response = client.post("/auth/google", json={})
+    assert response.status_code in (400, 422)
+
+    response_empty = client.post("/auth/google", json={"id_token": ""})
+    assert response_empty.status_code in (400, 422)
+
+
+# ---------------------------------------------------------------------------
 # Authorization & Cross-Tenant Boundary Enforcement (/query)
 # ---------------------------------------------------------------------------
 

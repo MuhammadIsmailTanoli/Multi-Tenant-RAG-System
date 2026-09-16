@@ -149,6 +149,10 @@ class Settings(BaseSettings):
         default=60,
         description="Expiration time in minutes for signed tenant JWT tokens.",
     )
+    google_client_id: Optional[str] = Field(
+        default=None,
+        description="Google OAuth 2.0 Client ID for verifying ID tokens.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),

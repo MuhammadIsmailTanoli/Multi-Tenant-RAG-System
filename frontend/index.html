@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
       --bg-main: #0B0F19;
@@ -620,6 +621,114 @@
       color: white;
     }
     .modal-btn.primary:hover { background: #4F46E5; }
+
+    /* ── Google Sign-In Elements ── */
+    .google-signin-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #FFFFFF;
+      color: #3C4043;
+      border: 1px solid #DADCE0;
+      border-radius: 9999px;
+      padding: 0.38rem 0.85rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      transition: all 0.2s ease;
+    }
+    .google-signin-btn:hover {
+      background: #F8F9FA;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      border-color: #D2E3FC;
+      transform: translateY(-1px);
+    }
+    .google-signin-btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+    .google-user-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(66, 133, 244, 0.4);
+      border-radius: 9999px;
+      padding: 0.25rem 0.75rem 0.25rem 0.35rem;
+      font-size: 0.8rem;
+      color: var(--text-primary);
+      box-shadow: 0 0 10px rgba(66, 133, 244, 0.15);
+    }
+    .google-avatar-img {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1.5px solid #4285F4;
+    }
+    .google-signout-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0 0.2rem;
+      transition: color 0.15s;
+    }
+    .google-signout-btn:hover { color: #EF4444; }
+    .auth-modal-divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 1.1rem 0;
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .auth-modal-divider::before,
+    .auth-modal-divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .auth-modal-divider span {
+      padding: 0 0.65rem;
+    }
+    .google-modal-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.65rem;
+      background: #FFFFFF;
+      color: #3C4043;
+      border: 1px solid #DADCE0;
+      border-radius: 10px;
+      padding: 0.65rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .google-modal-btn:hover {
+      background: #F8F9FA;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    }
+    .google-token-details {
+      background: rgba(66, 133, 244, 0.08);
+      border: 1px solid rgba(66, 133, 244, 0.25);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      font-size: 0.78rem;
+      color: #93C5FD;
+      margin-top: 0.75rem;
+    }
   </style>
 </head>
 <body>
@@ -632,6 +741,25 @@
       <span class="brand-badge">Isolation Testing</span>
     </div>
     <div style="display:flex; align-items:center; gap:0.85rem;">
+      <!-- Google Sign In Control -->
+      <div id="google-auth-container">
+        <button id="google-signin-btn" class="google-signin-btn" onclick="openGoogleModal()" title="Sign in with Google">
+          <svg viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          <span>Sign In with Google</span>
+        </button>
+        <div id="google-user-pill" class="google-user-pill" style="display:none;">
+          <img id="google-avatar-img" class="google-avatar-img" src="" alt="Google User" />
+          <span id="google-user-name" style="font-weight:600;"></span>
+          <span style="color:#34D399; font-size:0.75rem;" title="Google Verified">✔</span>
+          <button class="google-signout-btn" onclick="signOutGoogle()" title="Sign out of Google">✕</button>
+        </div>
+      </div>
+
       <button id="auth-status-btn" class="auth-pill" onclick="openAuthModal()" title="Click to view or authenticate company token">
         <span class="auth-dot locked" id="auth-dot"></span>
         <span id="auth-status-text">🔒 Acme Password Required</span>
@@ -682,6 +810,67 @@
         <button class="modal-btn secondary" onclick="closeAuthModal()">Cancel</button>
         <button class="modal-btn primary" id="auth-submit-btn" onclick="submitCompanyAuth()">Authenticate</button>
       </div>
+
+      <div class="auth-modal-divider"><span>OR USER IDENTITY</span></div>
+      <button class="google-modal-btn" onclick="closeAuthModal(); openGoogleModal();">
+        <svg width="18" height="18" viewBox="0 0 48 48">
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+        </svg>
+        <span>Sign In with Google</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Google Auth Modal -->
+  <div id="google-modal" class="modal-backdrop" style="display:none;" onclick="if(event.target === this) closeGoogleModal();">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+          <svg width="22" height="22" viewBox="0 0 48 48">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+          </svg>
+          <h3>Google Sign-In</h3>
+        </div>
+        <button class="modal-close-btn" onclick="closeGoogleModal()">&times;</button>
+      </div>
+      <p class="modal-subtitle">Authenticate via Google OAuth 2.0. Verified server-side via <code>POST /auth/google</code> with stable Google user ID extraction.</p>
+
+      <!-- Google Identity Services standard container -->
+      <div style="display:flex; justify-content:center; margin: 1rem 0;">
+        <div id="g_id_onload"
+             data-client_id=""
+             data-callback="handleGoogleCredentialResponse"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin" data-type="standard" data-shape="rectangular" data-theme="outline" data-text="signin_with" data-size="large" data-logo_alignment="left"></div>
+      </div>
+
+      <div class="auth-modal-divider"><span>OR VERIFY TOKEN</span></div>
+
+      <div class="form-group">
+        <label for="google-token-input">Google ID Token (JWT)</label>
+        <textarea
+          id="google-token-input"
+          class="modal-input"
+          rows="3"
+          placeholder="Paste Google ID token here (eyJhbGciOiJSUzI1NiIs...)..."
+          style="resize:vertical; font-size:0.76rem; font-family:'JetBrains Mono',monospace;"
+        ></textarea>
+      </div>
+
+      <div id="google-auth-error" class="auth-error" style="display:none;"></div>
+      <div id="google-auth-success" class="google-token-details" style="display:none;"></div>
+
+      <div class="modal-footer" style="margin-top:1rem;">
+        <button class="modal-btn secondary" onclick="closeGoogleModal()">Cancel</button>
+        <button class="modal-btn primary" id="google-verify-btn" onclick="submitManualGoogleToken()">Verify Token</button>
+      </div>
     </div>
   </div>
 
@@ -729,6 +918,159 @@
       acme: null,
       globex: null
     };
+    let googleUser = null;
+    let googleClientId = null;
+
+    async function initGoogleAuth() {
+      try {
+        const resp = await fetch('/auth/google/config');
+        if (resp.ok) {
+          const cfg = await resp.json();
+          if (cfg.client_id) {
+            googleClientId = cfg.client_id;
+            setupGoogleButton(cfg.client_id);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch Google auth config:', err);
+      }
+    }
+
+    function setupGoogleButton(clientId) {
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleCredentialResponse,
+          auto_select: false,
+        });
+
+        const signinContainer = document.getElementById('g_id_signin_wrapper') || document.querySelector('.g_id_signin');
+        if (signinContainer) {
+          signinContainer.innerHTML = '';
+          google.accounts.id.renderButton(signinContainer, {
+            theme: 'outline',
+            size: 'large',
+            text: 'signin_with',
+            shape: 'rectangular',
+            logo_alignment: 'left',
+          });
+        }
+      } else {
+        setTimeout(() => setupGoogleButton(clientId), 300);
+      }
+    }
+
+    function openGoogleModal() {
+      const modal = document.getElementById('google-modal');
+      const errorEl = document.getElementById('google-auth-error');
+      const successEl = document.getElementById('google-auth-success');
+      const tokenInput = document.getElementById('google-token-input');
+      errorEl.style.display = 'none';
+      errorEl.textContent = '';
+      successEl.style.display = 'none';
+      successEl.textContent = '';
+      tokenInput.value = '';
+      modal.style.display = 'flex';
+      if (googleClientId) {
+        setupGoogleButton(googleClientId);
+      }
+      setTimeout(() => tokenInput.focus(), 50);
+    }
+
+    function closeGoogleModal() {
+      document.getElementById('google-modal').style.display = 'none';
+    }
+
+    async function handleGoogleCredentialResponse(response) {
+      if (!response || !response.credential) {
+        console.warn('Google Sign-In response missing credential.');
+        return;
+      }
+      await verifyGoogleTokenOnBackend(response.credential);
+    }
+
+    async function submitManualGoogleToken() {
+      const tokenInput = document.getElementById('google-token-input');
+      const token = tokenInput.value.trim();
+      const errorEl = document.getElementById('google-auth-error');
+
+      if (!token) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Please enter or paste a Google ID token.';
+        return;
+      }
+
+      const verifyBtn = document.getElementById('google-verify-btn');
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Verifying with Google…';
+      errorEl.style.display = 'none';
+
+      await verifyGoogleTokenOnBackend(token);
+
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = 'Verify Token';
+    }
+
+    async function verifyGoogleTokenOnBackend(idToken) {
+      const errorEl = document.getElementById('google-auth-error');
+      const successEl = document.getElementById('google-auth-success');
+
+      try {
+        const resp = await fetch('/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_token: idToken })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          errorEl.style.display = 'block';
+          errorEl.textContent = data.detail || 'Google authentication failed.';
+          if (successEl) successEl.style.display = 'none';
+        } else {
+          googleUser = data;
+          updateGoogleUI();
+          if (successEl) {
+            successEl.style.display = 'block';
+            successEl.innerHTML = `
+              <strong>✓ Google Verified!</strong><br>
+              <strong>Email:</strong> ${escapeHtml(data.email)}<br>
+              <strong>Google User ID (sub):</strong> <code>${escapeHtml(data.google_user_id)}</code>
+            `;
+          }
+          setTimeout(() => closeGoogleModal(), 800);
+          appendNotice(`🌐 Google Verified: Signed in as <strong>${escapeHtml(data.name || data.email)}</strong> (${escapeHtml(data.email)}). Stable ID: <code>${escapeHtml(data.google_user_id)}</code>`);
+        }
+      } catch (err) {
+        errorEl.style.display = 'block';
+        errorEl.textContent = 'Connection error: ' + err.message;
+      }
+    }
+
+    function updateGoogleUI() {
+      const signinBtn = document.getElementById('google-signin-btn');
+      const userPill = document.getElementById('google-user-pill');
+      const avatarImg = document.getElementById('google-avatar-img');
+      const userName = document.getElementById('google-user-name');
+
+      if (googleUser) {
+        signinBtn.style.display = 'none';
+        userPill.style.display = 'inline-flex';
+        userName.textContent = googleUser.name || googleUser.email.split('@')[0];
+        userName.title = `Google ID: ${googleUser.google_user_id}\nEmail: ${googleUser.email}`;
+        avatarImg.src = googleUser.picture || '/static/user_avatar.jpg';
+      } else {
+        signinBtn.style.display = 'inline-flex';
+        userPill.style.display = 'none';
+      }
+    }
+
+    function signOutGoogle() {
+      const prevEmail = googleUser ? googleUser.email : 'Google';
+      googleUser = null;
+      updateGoogleUI();
+      appendNotice(`Signed out of Google account (<em>${escapeHtml(prevEmail)}</em>).`);
+    }
 
     function scrollToBottom() {
       const area = document.getElementById('messages-area');
@@ -981,6 +1323,9 @@
         .replace(/&/g,'&amp;').replace(/</g,'&lt;')
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
     }
+
+    // Initialize Google OAuth config on page load
+    initGoogleAuth();
   </script>
 </body>
 </html>
