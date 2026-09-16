@@ -260,7 +260,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit, onOpenLimits
 
           <textarea
             value={inputQuery}
-            onChange={(e) => setInputQuery(e.target.value)}
+            onChange={(e) => {
+              if (e.target.value.length <= 500) {
+                setInputQuery(e.target.value);
+              }
+            }}
+            maxLength={500}
             onKeyDown={handleKeyDown}
             rows={1}
             disabled={isLoading}
@@ -272,13 +277,32 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit, onOpenLimits
             className="flex-1 bg-transparent resize-none text-sm px-3 py-2 text-slate-100 placeholder-slate-500 focus:outline-none max-h-24 leading-relaxed font-sans"
           />
 
+          {/* Character Counter (0/500) */}
+          <div
+            className="shrink-0 px-2.5 py-1.5 text-[11px] font-mono select-none rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center transition-colors"
+            title="Message length (max 500 characters)"
+          >
+            <span
+              className={
+                inputQuery.length >= 500
+                  ? 'text-red-400 font-bold'
+                  : inputQuery.length >= 450
+                    ? 'text-amber-400 font-semibold'
+                    : 'text-slate-300'
+              }
+            >
+              {inputQuery.length}
+            </span>
+            <span className="text-slate-500">/500</span>
+          </div>
+
           <button
             type="submit"
             disabled={!inputQuery.trim() || isLoading}
             className={`px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${tokens.primaryButtonClass}`}
           >
             <Send className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Send Query</span>
+            <span className="hidden sm:inline">Send</span>
           </button>
         </form>
       </div>

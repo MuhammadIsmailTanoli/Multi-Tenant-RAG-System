@@ -18,27 +18,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center px-4 py-12 z-10">
+      {/* Top Left Branding Logo */}
+      <div
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        className="fixed top-5 left-5 sm:top-6 sm:left-6 z-40 cursor-pointer flex items-center gap-2.5 px-3 py-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 backdrop-blur-xl shadow-lg transition-all duration-200 group"
+        title="Multi-Tenant RAG System"
+      >
+        <img
+          src="/images/LOGO.png"
+          alt="Multi-Tenant RAG"
+          className="w-8 h-8 sm:w-9 sm:h-9 object-contain drop-shadow group-hover:scale-105 transition-transform"
+        />
+        <span className="font-bold text-xs tracking-wider text-slate-300 group-hover:text-white uppercase font-mono hidden sm:inline">
+          RAG // SYSTEM
+        </span>
+      </div>
+
       {/* Executive Header */}
       <motion.div
-        className="text-center max-w-2xl mx-auto mb-10 sm:mb-14 flex flex-col items-center"
+        className="text-center max-w-2xl mx-auto mb-12 sm:mb-16 flex flex-col items-center"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <div
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          className="cursor-pointer mb-5 group flex flex-col items-center"
-          title="Multi-Tenant RAG System"
-        >
-          <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl group-hover:border-white/20 transition-all duration-300">
-            <img
-              src="/images/LOGO.png"
-              alt="Multi-Tenant RAG Platform"
-              className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] transition-transform duration-300 group-hover:scale-105"
-            />
-          </div>
-        </div>
-
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-medium tracking-wide mb-4 backdrop-blur-md shadow-sm">
           <Lock className="w-3.5 h-3.5 text-indigo-400" />
           <span>Multi-Tenant RAG Isolation Platform</span>
@@ -88,14 +90,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
               <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/[0.07] rounded-full blur-3xl pointer-events-none group-hover:bg-amber-500/[0.14] transition-colors" />
 
               <div>
-                {/* Header Badge & Icon */}
-                <div className="flex items-center justify-between mb-6">
+                {/* Header Icon */}
+                <div className="flex items-center mb-6">
                   <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
                     <Cpu className="w-7 h-7" />
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs font-semibold tracking-wider uppercase">
-                    CLUSTER A // AMBER
-                  </span>
                 </div>
 
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2 group-hover:text-amber-300 transition-colors">
@@ -109,12 +108,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
                 </p>
               </div>
 
-              {/* Footer Meta & CTA */}
-              <div className="pt-6 border-t border-white/10 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <Database className="w-3.5 h-3.5 text-amber-400" />
-                  <span>34 Handbook Chunks</span>
-                </div>
+              {/* Footer CTA */}
+              <div className="pt-6 border-t border-white/10 flex items-center justify-end">
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-semibold tracking-wide group-hover:translate-x-1 transition-all">
                   <span>Enter Workspace</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -159,14 +154,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
               <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/[0.07] rounded-full blur-3xl pointer-events-none group-hover:bg-cyan-500/[0.14] transition-colors" />
 
               <div>
-                {/* Header Badge & Icon */}
-                <div className="flex items-center justify-between mb-6">
+                {/* Header Icon */}
+                <div className="flex items-center mb-6">
                   <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
                     <ShieldCheck className="w-7 h-7" />
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 text-xs font-semibold tracking-wider uppercase">
-                    CLUSTER B // CYAN
-                  </span>
                 </div>
 
                 <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-2 group-hover:text-cyan-300 transition-colors">
@@ -180,12 +172,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
                 </p>
               </div>
 
-              {/* Footer Meta & CTA */}
-              <div className="pt-6 border-t border-white/10 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-slate-400">
-                  <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>28 Handbook Chunks</span>
-                </div>
+              {/* Footer CTA */}
+              <div className="pt-6 border-t border-white/10 flex items-center justify-end">
                 <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-300 text-xs font-semibold tracking-wide group-hover:translate-x-1 transition-all">
                   <span>Enter Workspace</span>
                   <ArrowRight className="w-3.5 h-3.5" />

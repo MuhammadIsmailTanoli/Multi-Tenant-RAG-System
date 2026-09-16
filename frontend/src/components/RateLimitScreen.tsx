@@ -7,11 +7,13 @@ import { RateLimitErrorDetail } from '../types';
 interface RateLimitScreenProps {
   detail: RateLimitErrorDetail;
   onBackToChat: () => void;
+  onHome?: () => void;
 }
 
 export const RateLimitScreen: React.FC<RateLimitScreenProps> = ({
   detail,
   onBackToChat,
+  onHome,
 }) => {
   const { activeTenant, tokens } = useTheme();
 
@@ -38,6 +40,23 @@ export const RateLimitScreen: React.FC<RateLimitScreenProps> = ({
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center px-4 py-8 z-30">
+      {/* Top Left Logo linking back to 1st home page */}
+      <motion.div
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="fixed top-5 left-5 sm:top-6 sm:left-6 z-40 cursor-pointer flex items-center gap-2.5 px-3 py-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 backdrop-blur-xl shadow-lg transition-all duration-200 group"
+        onClick={onHome || onBackToChat}
+        title="Return to Home Page"
+      >
+        <img
+          src="/images/LOGO.png"
+          alt="Multi-Tenant RAG"
+          className="w-8 h-8 sm:w-9 sm:h-9 object-contain drop-shadow group-hover:scale-105 transition-transform"
+        />
+        <span className="font-bold text-xs tracking-wider text-slate-300 group-hover:text-white uppercase font-mono hidden sm:inline">
+          RAG // SYSTEM
+        </span>
+      </motion.div>
       <motion.div
         initial={{ opacity: 0, scale: 0.92, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}

@@ -185,6 +185,7 @@ const InnerApp: React.FC = () => {
             <RateLimitScreen
               detail={rateLimitDetail}
               onBackToChat={handleBackToChat}
+              onHome={handleSwitchCompany}
             />
           </motion.div>
         )}

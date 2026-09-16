@@ -32,8 +32,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               alt="Multi-Tenant RAG"
               className="w-8 h-8 sm:w-9 sm:h-9 object-contain drop-shadow group-hover:scale-105 transition-transform"
             />
-            <span className="hidden md:inline font-bold text-[11px] tracking-wider text-slate-300 group-hover:text-white uppercase font-mono">
-              RAG
+            <span className="hidden md:inline font-bold text-xs tracking-wider text-slate-300 group-hover:text-white uppercase font-mono">
+              RAG // SYSTEM
             </span>
           </button>
 

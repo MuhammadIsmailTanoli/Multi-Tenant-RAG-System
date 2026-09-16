@@ -110,16 +110,22 @@ export const GoogleSignInStep: React.FC<GoogleSignInStepProps> = ({
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center px-4 py-8 z-10">
-      {/* Top Logo linking back to 1st home page */}
+      {/* Top Left Logo linking back to 1st home page */}
       <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-6 cursor-pointer flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 transition-all duration-200"
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        className="fixed top-5 left-5 sm:top-6 sm:left-6 z-40 cursor-pointer flex items-center gap-2.5 px-3 py-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 backdrop-blur-xl shadow-lg transition-all duration-200 group"
         onClick={onHome || onBack}
         title="Return to Home Page"
       >
-        <img src="/images/LOGO.png" alt="Platform Logo" className="w-8 h-8 object-contain rounded-lg" />
-        <span className="text-xs font-semibold tracking-wide text-slate-300">Multi-Tenant RAG</span>
+        <img
+          src="/images/LOGO.png"
+          alt="Multi-Tenant RAG"
+          className="w-8 h-8 sm:w-9 sm:h-9 object-contain drop-shadow group-hover:scale-105 transition-transform"
+        />
+        <span className="font-bold text-xs tracking-wider text-slate-300 group-hover:text-white uppercase font-mono hidden sm:inline">
+          RAG // SYSTEM
+        </span>
       </motion.div>
 
       <motion.div
