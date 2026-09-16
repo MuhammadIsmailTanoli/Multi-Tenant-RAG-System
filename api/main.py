@@ -42,9 +42,16 @@ from api.llm_provider import get_llm_adapter
 from api.auth import (
     verify_company_password,
     create_tenant_token,
+    decode_tenant_token,
     get_token_tenant,
     verify_google_id_token,
     verify_and_extract_google_identity,
+)
+from api.rate_limiter import (
+    limiter,
+    rate_limit_exceeded_handler,
+    RateLimitExceeded,
+    get_user_limits_status,
 )
 
 # Setup logger
@@ -232,6 +239,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Attach SlowAPI rate limiter and exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
 # Enable CORS for local development and web frontends
 app.add_middleware(
     CORSMiddleware,
@@ -384,6 +395,7 @@ async def root() -> Dict[str, Any]:
             "tenants": "GET /tenants",
             "health": "GET /health",
             "documents": "GET /documents/{filename}",
+            "limits": "GET /limits",
         },
     }
 
@@ -414,8 +426,28 @@ async def health_check() -> Dict[str, Any]:
         logger.error(f"Health check failed: {exc}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Configuration error: {str(exc)}",
+            detail=f"Service unhealthy: {str(exc)}",
         )
+
+
+@app.get("/limits", tags=["System"])
+async def get_limits_status(request: Request) -> Dict[str, Any]:
+    """Return the current user's daily and weekly query usage, remaining quotas, and reset times."""
+    auth_header = request.headers.get("Authorization", "")
+    google_sub = None
+    email = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        try:
+            payload = decode_tenant_token(token)
+            google_sub = payload.get("google_sub")
+            email = payload.get("email")
+        except Exception as e:
+            logger.debug(f"Could not extract token claims for /limits: {e}")
+
+    status_data = get_user_limits_status(google_sub)
+    status_data["email"] = email
+    return status_data
 
 
 @app.get("/tenants", response_model=List[TenantSummary], tags=["Tenants"])
@@ -738,13 +770,18 @@ async def authenticate_google(req: GoogleAuthRequest) -> GoogleAuthResponse:
                 }
             },
         },
+        429: {
+            "description": "Rate limit exceeded: Daily or weekly query limit reached for this Google user across all companies.",
+        },
         500: {
             "description": "Internal error during retrieval or generation.",
         },
     },
 )
+@limiter.limit(get_settings().rate_limit_query)
 async def query_tenant(
-    request: QueryRequest,
+    request: Request,
+    query_req: QueryRequest,
     token_tenant_id: str = Depends(get_token_tenant),
 ) -> QueryResponse:
     """Full RAG pipeline: retrieve → prompt → generate → respond.
@@ -759,8 +796,8 @@ async def query_tenant(
     7. Generate an answer via the configured LLM provider (Gemini by default).
     8. Return answer with source citations and chunk count.
     """
-    raw_tenant_id = request.tenant_id
-    raw_question = request.question
+    raw_tenant_id = query_req.tenant_id
+    raw_question = query_req.question
 
     # --- Step 1: Validate tenant_id strictly ---
     if raw_tenant_id is None:
@@ -862,7 +899,7 @@ async def query_tenant(
         chunks = retrieve_tenant_chunks(
             tenant_id=clean_tenant_id,
             question=clean_question,
-            top_k=request.top_k,
+            top_k=query_req.top_k,
         )
     except CollectionNotFoundError as exc:
         logger.error(f"Collection not found for tenant '{clean_tenant_id}': {exc}")
@@ -912,12 +949,13 @@ async def query_tenant(
         )
 
     # --- Step 6: Return response ---
+    sources = format_sources_for_response(chunks)
     return QueryResponse(
         tenant_id=tenant_config.id,
         tenant_name=tenant_config.name,
         question=clean_question,
         answer=answer,
-        sources=[],
+        sources=sources,
         chunks_retrieved=len(chunks),
         message=f"Answer generated from {len(chunks)} document chunk(s) for {tenant_config.name} via {llm.provider_name}.",
     )

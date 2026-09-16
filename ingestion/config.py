@@ -153,6 +153,26 @@ class Settings(BaseSettings):
         default=None,
         description="Google OAuth 2.0 Client ID for verifying ID tokens.",
     )
+    rate_limit_query: str = Field(
+        default="50/day;200/7 days",
+        description="SlowAPI rate limits for /query endpoint (e.g. '50/day;200/week' or '50/day;200/7 days').",
+    )
+    rate_limit_storage_uri: str = Field(
+        default="sqlite:///data/rate_limits.db",
+        description="Storage URI for persistent rate limiting counts (e.g. 'sqlite:///data/rate_limits.db').",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        description="Whether rate limiting is enabled across the application.",
+    )
+
+    @field_validator("rate_limit_query", mode="after")
+    @classmethod
+    def normalize_rate_limit(cls, v: str) -> str:
+        """Convert friendly 'week' unit to '7 days' supported by limits library."""
+        if v:
+            return re.sub(r"/\s*week\b", "/7 days", v, flags=re.IGNORECASE)
+        return v
 
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),

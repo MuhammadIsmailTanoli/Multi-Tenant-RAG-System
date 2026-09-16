@@ -729,6 +729,82 @@
       color: #93C5FD;
       margin-top: 0.75rem;
     }
+
+    /* ── Limits Button & Meter Styles ── */
+    .quota-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 0 0.85rem;
+      height: 48px;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    .quota-btn:hover {
+      background: rgba(99, 102, 241, 0.14);
+      border-color: rgba(99, 102, 241, 0.4);
+      color: #A5B4FC;
+      transform: translateY(-1px);
+    }
+    .quota-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 0.85rem;
+      transition: border-color 0.2s;
+    }
+    .quota-card:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+    .quota-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.6rem;
+    }
+    .quota-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .quota-numbers {
+      font-size: 0.86rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: #A5B4FC;
+    }
+    .quota-progress-track {
+      width: 100%;
+      height: 10px;
+      background: rgba(0, 0, 0, 0.45);
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 0.45rem;
+      position: relative;
+    }
+    .quota-progress-fill {
+      height: 100%;
+      border-radius: 9999px;
+      background: linear-gradient(90deg, #10B981, #3B82F6);
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+    }
+    .quota-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -874,6 +950,76 @@
     </div>
   </div>
 
+  <!-- Rate Limits Modal with Bar Lines & Numbers -->
+  <div class="modal-backdrop" id="limits-modal" style="display:none;" onclick="if(event.target === this) closeLimitsModal()">
+    <div class="modal-card" style="max-width: 470px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:0.65rem;">
+          <div style="background:rgba(99,102,241,0.18); border:1px solid rgba(99,102,241,0.35); border-radius:10px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; color:#818CF8;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+            </svg>
+          </div>
+          <div>
+            <h3 style="margin:0; font-size:1.05rem;">Query Rate Limits</h3>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Keyed by Google Identity &bull; Shared across companies</div>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="closeLimitsModal()">&times;</button>
+      </div>
+
+      <div id="limits-user-banner" style="margin-bottom:1.1rem; padding:0.6rem 0.85rem; border-radius:10px; background:rgba(255,255,255,0.03); border:1px solid var(--border-subtle); display:flex; align-items:center; justify-content:space-between; font-size:0.8rem;">
+        <span id="limits-banner-text" style="color:var(--text-secondary);">Loading live quota details...</span>
+      </div>
+
+      <div class="limits-container" id="limits-container">
+        <!-- Daily Quota Card -->
+        <div class="quota-card">
+          <div class="quota-card-header">
+            <span class="quota-title">Daily Limit</span>
+            <span class="quota-numbers" id="daily-numbers">0 / 50 used</span>
+          </div>
+          <div class="quota-progress-track">
+            <div class="quota-progress-fill" id="daily-progress-bar" style="width: 0%;"></div>
+          </div>
+          <div class="quota-meta">
+            <span id="daily-remaining">50 queries remaining</span>
+            <span id="daily-reset">Resets daily (24h)</span>
+          </div>
+        </div>
+
+        <!-- Weekly Quota Card -->
+        <div class="quota-card">
+          <div class="quota-card-header">
+            <span class="quota-title">Weekly Limit</span>
+            <span class="quota-numbers" id="weekly-numbers">0 / 200 used</span>
+          </div>
+          <div class="quota-progress-track">
+            <div class="quota-progress-fill" id="weekly-progress-bar" style="width: 0%;"></div>
+          </div>
+          <div class="quota-meta">
+            <span id="weekly-remaining">200 queries remaining</span>
+            <span id="weekly-reset">Resets weekly (7d)</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:1.15rem; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:0.4rem;">
+          <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#10B981; box-shadow:0 0 6px rgba(16,185,129,0.6);"></span>
+          SQLite Persisted
+        </span>
+        <div style="display:flex; gap:0.5rem;">
+          <button class="modal-btn secondary" onclick="refreshLimitsModal()" style="display:flex; align-items:center; gap:0.35rem; font-size:0.8rem; padding:0.45rem 0.8rem;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Refresh
+          </button>
+          <button class="modal-btn primary" onclick="closeLimitsModal()" style="font-size:0.8rem; padding:0.45rem 0.95rem;">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Chat -->
   <div class="chat-wrapper">
     <div class="messages-area" id="messages-area">
@@ -902,6 +1048,12 @@
         />
         <div class="char-counter" id="char-counter">0 / 500</div>
       </div>
+      <button class="quota-btn" id="quota-btn" onclick="openLimitsModal()" title="View Query Quotas & Rate Limits">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path>
+        </svg>
+        <span>Limits</span>
+      </button>
       <button class="send-btn" id="send-btn" onclick="handleSend()">
         Ask
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1286,8 +1438,24 @@
             tenantTokens[currentTenant] = null;
             updateAuthBadge();
           }
-          bubble.className = 'message-bubble error-bubble';
-          bubble.innerHTML = `<strong>HTTP ${resp.status} — </strong>${escapeHtml(data.detail || JSON.stringify(data))}`;
+
+          if (resp.status === 429) {
+            const resetStr = data.reset_time
+              ? new Date(data.reset_time).toLocaleString()
+              : (data.retry_after_seconds ? `${data.retry_after_seconds} seconds` : '');
+            bubble.className = 'message-bubble error-bubble';
+            bubble.innerHTML = `
+              <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.35rem; color:#F87171; font-weight:600;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span>Query Rate Limit Exceeded (HTTP 429)</span>
+              </div>
+              <div style="font-size:0.85rem; line-height:1.45;">${escapeHtml(data.detail || 'Query limit reached across companies.')}</div>
+              ${resetStr ? `<div style="margin-top:0.5rem; font-size:0.8rem; color:#CBD5E1; background:rgba(0,0,0,0.25); padding:0.4rem 0.6rem; border-radius:6px;"><strong>Reset Quota:</strong> ${escapeHtml(resetStr)} &bull; Limit: <code>${escapeHtml(data.limit || '')}</code></div>` : ''}
+            `;
+          } else {
+            bubble.className = 'message-bubble error-bubble';
+            bubble.innerHTML = `<strong>HTTP ${resp.status} — </strong>${escapeHtml(data.detail || JSON.stringify(data))}`;
+          }
         } else {
           const tenantColor = currentTenant === 'acme' ? '#60A5FA' : '#34D399';
           bubble.innerHTML = `
@@ -1304,6 +1472,7 @@
       } finally {
         btn.disabled = false;
         scrollToBottom();
+        fetchLimitsData();
       }
     }
 
@@ -1349,6 +1518,112 @@
 
     // Initialize Google OAuth config on page load
     initGoogleAuth();
+    fetchLimitsData();
+
+    // ── Rate Limits Modal Logic (Bar Lines & Numbers) ──
+    async function openLimitsModal() {
+      document.getElementById('limits-modal').style.display = 'flex';
+      await fetchLimitsData();
+    }
+
+    function closeLimitsModal() {
+      document.getElementById('limits-modal').style.display = 'none';
+    }
+
+    async function refreshLimitsModal() {
+      await fetchLimitsData();
+    }
+
+    async function fetchLimitsData() {
+      try {
+        const headers = {};
+        if (tenantTokens[currentTenant]) {
+          headers['Authorization'] = `Bearer ${tenantTokens[currentTenant]}`;
+        }
+
+        const resp = await fetch('/limits', { headers });
+        if (!resp.ok) return;
+
+        const data = await resp.json();
+        renderLimits(data);
+      } catch (err) {
+        console.warn('Could not fetch limits data:', err);
+      }
+    }
+
+    function renderLimits(data) {
+      const banner = document.getElementById('limits-user-banner');
+      if (data.authenticated && data.email) {
+        banner.innerHTML = `
+          <div style="display:flex; align-items:center; gap:0.45rem;">
+            <span style="color:#60A5FA; font-weight:600;">Google Account:</span>
+            <span style="color:var(--text-primary);">${escapeHtml(data.email)}</span>
+          </div>
+          <span style="color:#34D399; font-size:0.75rem; background:rgba(52,211,153,0.12); padding:0.2rem 0.5rem; border-radius:9999px;">Verified Quota</span>
+        `;
+      } else if (googleUser && googleUser.email) {
+        banner.innerHTML = `
+          <div style="display:flex; align-items:center; gap:0.45rem;">
+            <span style="color:#60A5FA; font-weight:600;">Google Account:</span>
+            <span style="color:var(--text-primary);">${escapeHtml(googleUser.email)}</span>
+          </div>
+          <span style="color:#A5B4FC; font-size:0.75rem;">Signed In</span>
+        `;
+      } else {
+        banner.innerHTML = `
+          <span style="color:var(--text-muted);">Not signed in with Google. Standard 50/day and 200/week limits apply.</span>
+          <button onclick="closeLimitsModal(); openGoogleModal();" style="background:none; border:none; color:#818CF8; cursor:pointer; font-weight:600; font-size:0.78rem;">Sign In</button>
+        `;
+      }
+
+      if (data.limits && Array.isArray(data.limits)) {
+        data.limits.forEach(item => {
+          const isDay = item.period === 'day' || item.granularity_seconds === 86400;
+          const prefix = isDay ? 'daily' : 'weekly';
+
+          const numbersEl = document.getElementById(`${prefix}-numbers`);
+          const barEl = document.getElementById(`${prefix}-progress-bar`);
+          const remainingEl = document.getElementById(`${prefix}-remaining`);
+          const resetEl = document.getElementById(`${prefix}-reset`);
+
+          if (!numbersEl || !barEl) return;
+
+          const pct = Math.min(100, Math.max(0, item.percentage_used || 0));
+          numbersEl.textContent = `${item.count} / ${item.limit} used (${pct}%)`;
+          barEl.style.width = `${pct}%`;
+
+          // Color based on usage severity
+          if (pct > 85) {
+            barEl.style.background = 'linear-gradient(90deg, #F59E0B, #EF4444)';
+            barEl.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.45)';
+            numbersEl.style.color = '#F87171';
+          } else if (pct > 60) {
+            barEl.style.background = 'linear-gradient(90deg, #3B82F6, #F59E0B)';
+            barEl.style.boxShadow = '0 0 12px rgba(245, 158, 11, 0.35)';
+            numbersEl.style.color = '#FBBF24';
+          } else {
+            barEl.style.background = 'linear-gradient(90deg, #10B981, #3B82F6)';
+            barEl.style.boxShadow = '0 0 12px rgba(59, 130, 246, 0.35)';
+            numbersEl.style.color = '#A5B4FC';
+          }
+
+          if (remainingEl) {
+            remainingEl.textContent = `${item.remaining} queries remaining`;
+          }
+
+          if (resetEl) {
+            if (item.reset_seconds > 0) {
+              const hours = Math.floor(item.reset_seconds / 3600);
+              const mins = Math.floor((item.reset_seconds % 3600) / 60);
+              const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+              resetEl.textContent = `Resets in ${timeStr}`;
+            } else {
+              resetEl.textContent = isDay ? 'Resets daily (24h)' : 'Resets weekly (7d)';
+            }
+          }
+        });
+      }
+    }
   </script>
 </body>
 </html>

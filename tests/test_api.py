@@ -16,14 +16,23 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from api.auth import create_tenant_token
+from api.rate_limiter import limiter
 
 client = TestClient(app)
 
 
-def get_auth_headers(tenant_id: str = "acme") -> dict:
-    """Generate Authorization headers with a valid signed JWT scoped to tenant_id."""
-    token = create_tenant_token(tenant_id)
+def get_auth_headers(tenant_id: str = "acme", google_sub: str = "test-user-sub-123") -> dict:
+    """Generate Authorization headers with a valid signed JWT scoped to tenant_id and google_sub."""
+    token = create_tenant_token(tenant_id, google_sub=google_sub, email="test@example.com")
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter_fixture():
+    """Reset rate limiter counters before each test to guarantee complete test isolation."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -723,3 +732,127 @@ def test_query_whitespace_question_returns_strict_422():
     assert response.status_code == 422
     data = response.json()
     assert "cannot be empty or contain only whitespace" in data["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Rate Limiting Tests (SlowAPI + SQLite Storage Keyed by Google Identity)
+# ---------------------------------------------------------------------------
+
+def test_rate_limit_query_within_limits():
+    """Verify that queries within the allowed quota succeed with 200 OK."""
+    headers = get_auth_headers("acme", google_sub="google-quota-user-1")
+    for _ in range(3):
+        res = client.post(
+            "/query",
+            json={"tenant_id": "acme", "question": "What is the policy?"},
+            headers=headers,
+        )
+        assert res.status_code == 200
+
+
+def test_rate_limit_query_exceeded_returns_429():
+    """Verify that exceeding rate limits returns HTTP 429 with clear message, reset time, and Retry-After header."""
+    user_sub = "google-quota-exceed-user"
+    headers = get_auth_headers("acme", google_sub=user_sub)
+
+    # Use limiter directly to set the counter near/at the limit or simulate exceeding
+    # Hit limiter 50 times (or set the count directly in storage for rapid test execution)
+    from limits import parse
+    limit_item = parse("50/day")
+    key = f"LIMITER/google_user:{user_sub}//query/50/1/day"
+    limiter._storage.incr(key, expiry=86400, amount=50)
+
+    # 51st request should trigger HTTP 429
+    res = client.post(
+        "/query",
+        json={"tenant_id": "acme", "question": "What is the vacation policy?"},
+        headers=headers,
+    )
+    assert res.status_code == 429
+    data = res.json()
+    assert "Rate limit exceeded" in data["detail"]
+    assert "50 per 1 day" in data["limit"]
+    assert "reset_time" in data
+    assert data["reset_epoch"] > 0
+    assert data["retry_after_seconds"] > 0
+    assert "Retry-After" in res.headers
+    assert int(res.headers["Retry-After"]) > 0
+
+
+def test_rate_limit_shared_across_tenants_by_google_sub():
+    """Verify that rate limits apply per real Google user across Acme and Globex combined."""
+    shared_google_sub = "shared-google-sub-across-companies"
+    acme_headers = get_auth_headers("acme", google_sub=shared_google_sub)
+    globex_headers = get_auth_headers("globex", google_sub=shared_google_sub)
+
+    # Simulate 50 queries made under Acme
+    key = f"LIMITER/google_user:{shared_google_sub}//query/50/1/day"
+    limiter._storage.incr(key, expiry=86400, amount=50)
+
+    # When querying Globex with the same Google identity, the user is blocked
+    res_globex = client.post(
+        "/query",
+        json={"tenant_id": "globex", "question": "What is the expense policy?"},
+        headers=globex_headers,
+    )
+    assert res_globex.status_code == 429
+    data = res_globex.json()
+    assert "Rate limit exceeded" in data["detail"]
+    assert "Real user query limit reached across all companies" in data["detail"]
+
+
+def test_rate_limit_persists_in_sqlite_across_restart():
+    """Verify that SQLite storage retains hit counters across simulated application restarts."""
+    from api.rate_limiter import SQLiteStorage
+    from ingestion.config import get_settings
+
+    test_db_uri = get_settings().rate_limit_storage_uri
+    storage1 = SQLiteStorage(test_db_uri)
+
+    test_key = "test_persistence_key"
+    storage1.incr(test_key, expiry=3600, amount=5)
+    assert storage1.get(test_key) == 5
+
+    # Simulate server restart by creating a new storage instance pointing to the same SQLite DB
+    storage2 = SQLiteStorage(test_db_uri)
+    assert storage2.get(test_key) == 5
+
+    # Increment further on the new instance
+    new_count = storage2.incr(test_key, expiry=3600, amount=2)
+    assert new_count == 7
+    assert storage2.get(test_key) == 7
+
+
+def test_get_limits_endpoint_unauthenticated():
+    """Verify GET /limits returns default quota config when unauthenticated."""
+    res = client.get("/limits")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["authenticated"] is False
+    assert len(data["limits"]) >= 2
+    periods = [item["period"] for item in data["limits"]]
+    assert "day" in periods
+    assert "week" in periods
+
+
+def test_get_limits_endpoint_authenticated():
+    """Verify GET /limits returns current live usage and remaining counts for a Google user."""
+    user_sub = "test-live-limits-user"
+    headers = get_auth_headers("acme", google_sub=user_sub)
+
+    # Increment counter for 10 queries
+    key = f"LIMITER/google_user:{user_sub}//query/50/1/day"
+    limiter._storage.incr(key, expiry=86400, amount=10)
+
+    res = client.get("/limits", headers=headers)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["authenticated"] is True
+    assert data["google_sub"] == user_sub
+
+    day_item = next(item for item in data["limits"] if item["period"] == "day")
+    assert day_item["limit"] == 50
+    assert day_item["count"] == 10
+    assert day_item["remaining"] == 40
+    assert day_item["percentage_used"] == 20.0
+    assert day_item["reset_seconds"] > 0
