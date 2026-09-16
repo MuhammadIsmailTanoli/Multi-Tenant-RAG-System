@@ -1029,6 +1029,7 @@
           if (successEl) successEl.style.display = 'none';
         } else {
           googleUser = data;
+          googleRawIdToken = idToken;
           updateGoogleUI();
           if (successEl) {
             successEl.style.display = 'block';
@@ -1039,7 +1040,7 @@
             `;
           }
           setTimeout(() => closeGoogleModal(), 800);
-          appendNotice(`🌐 Google Verified: Signed in as <strong>${escapeHtml(data.name || data.email)}</strong> (${escapeHtml(data.email)}). Stable ID: <code>${escapeHtml(data.google_user_id)}</code>`);
+          appendNotice(`🌐 Google Verified: Signed in as <strong>${escapeHtml(data.name || data.email)}</strong> (${escapeHtml(data.email)}). Ready for company access.`);
         }
       } catch (err) {
         errorEl.style.display = 'block';
@@ -1068,8 +1069,12 @@
     function signOutGoogle() {
       const prevEmail = googleUser ? googleUser.email : 'Google';
       googleUser = null;
+      googleRawIdToken = null;
+      tenantTokens.acme = null;
+      tenantTokens.globex = null;
+      updateAuthBadge();
       updateGoogleUI();
-      appendNotice(`Signed out of Google account (<em>${escapeHtml(prevEmail)}</em>).`);
+      appendNotice(`Signed out of Google account (<em>${escapeHtml(prevEmail)}</em>). Company sessions cleared.`);
     }
 
     function scrollToBottom() {
@@ -1115,14 +1120,22 @@
       input.focus();
     }
 
+    let googleRawIdToken = null;
+
     async function submitCompanyAuth() {
       const pwd = document.getElementById('company-pwd-input').value.trim();
       const errorEl = document.getElementById('auth-error-msg');
       const submitBtn = document.getElementById('auth-submit-btn');
 
+      if (!googleRawIdToken) {
+        errorEl.style.display = 'block';
+        errorEl.innerHTML = '⚠️ <strong>Google Identity Required</strong>: A company session can only be issued to an already Google-verified user. Please <a href="javascript:void(0)" onclick="closeAuthModal(); openGoogleModal();" style="color:#93C5FD; text-decoration:underline;">Sign In with Google</a> first.';
+        return;
+      }
+
       if (!pwd) {
         errorEl.style.display = 'block';
-        errorEl.textContent = 'Please enter a password.';
+        errorEl.textContent = 'Please enter a company password.';
         return;
       }
 
@@ -1130,11 +1143,19 @@
       submitBtn.textContent = 'Verifying…';
       errorEl.style.display = 'none';
 
+      // Determine whether this is an initial auth or switching company
+      const otherTenant = currentTenant === 'acme' ? 'globex' : 'acme';
+      const isSwitch = !!tenantTokens[otherTenant];
+      const endpoint = isSwitch ? '/auth/switch-company' : '/auth/company';
+      const payload = isSwitch
+        ? { new_tenant_id: currentTenant, password: pwd, google_id_token: googleRawIdToken }
+        : { tenant_id: currentTenant, password: pwd, google_id_token: googleRawIdToken };
+
       try {
-        const resp = await fetch('/auth/company', {
+        const resp = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tenant_id: currentTenant, password: pwd })
+          body: JSON.stringify(payload)
         });
         const data = await resp.json();
         if (!resp.ok) {
@@ -1144,7 +1165,9 @@
           tenantTokens[currentTenant] = data.access_token;
           updateAuthBadge();
           closeAuthModal();
-          appendNotice(`✅ Authenticated as <strong>${currentTenant === 'acme' ? 'Acme Corp' : 'Globex Corporation'}</strong>! Token scoped and active.`);
+          const emailNotice = data.email ? ` for ${escapeHtml(data.email)}` : '';
+          const actionWord = isSwitch ? 'Switched to' : 'Authenticated as';
+          appendNotice(`✅ Unified Session: ${actionWord} <strong>${currentTenant === 'acme' ? 'Acme Corp' : 'Globex Corporation'}</strong>${emailNotice}! Bound to Google ID: <code>${escapeHtml(data.google_sub)}</code>.`);
         }
       } catch (err) {
         errorEl.style.display = 'block';

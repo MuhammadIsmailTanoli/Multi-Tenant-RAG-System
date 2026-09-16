@@ -57,16 +57,20 @@ def hash_password(plain_password: str) -> str:
 
 def create_tenant_token(
     tenant_id: str,
+    google_sub: Optional[str] = None,
+    email: Optional[str] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
-    """Generate a signed JWT access token scoped strictly to tenant_id.
+    """Generate a signed JWT access token scoped to tenant_id and tied to google_sub.
 
     Args:
         tenant_id: Unique identifier of the tenant.
+        google_sub: Optional stable Google user ID (sub claim).
+        email: Optional verified user email address.
         expires_delta: Optional custom token expiration duration.
 
     Returns:
-        Encoded signed JWT string.
+        Encoded signed JWT string containing tenant_id and google_sub.
     """
     settings = get_settings()
     clean_tenant_id = tenant_id.strip().lower()
@@ -81,6 +85,8 @@ def create_tenant_token(
     payload: Dict[str, Any] = {
         "sub": clean_tenant_id,
         "tenant_id": clean_tenant_id,
+        "google_sub": str(google_sub) if google_sub else "",
+        "email": email or "",
         "iat": datetime.now(timezone.utc),
         "exp": expire,
     }
@@ -223,4 +229,35 @@ def verify_google_id_token(
             detail=f"Authentication failed: Unable to verify Google ID token ({str(exc)}).",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+
+def verify_and_extract_google_identity(token: str) -> Dict[str, Any]:
+    """Verify Google OAuth 2.0 ID token and ensure valid 'sub' and 'email' claims exist.
+
+    Args:
+        token: Raw Google ID token JWT string.
+
+    Returns:
+        Dict with decoded token claims (guaranteeing 'sub' and 'email').
+
+    Raises:
+        HTTPException 401 if token is invalid, expired, or missing required claims.
+    """
+    id_info = verify_google_id_token(token)
+    sub = id_info.get("sub")
+    email = id_info.get("email")
+
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Google ID token is missing required 'sub' claim.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Google ID token is missing required 'email' claim.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return id_info
 

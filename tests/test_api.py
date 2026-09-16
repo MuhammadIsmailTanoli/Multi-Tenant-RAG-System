@@ -99,19 +99,35 @@ def test_root_endpoint_metadata():
 
 
 # ---------------------------------------------------------------------------
-# Company Password Authentication (/auth/company)
+# Company Password Authentication & Unified Session Flow (/auth/company, /auth/switch-company)
 # ---------------------------------------------------------------------------
 
+MOCK_GOOGLE_ID_INFO = {
+    "sub": "google-user-1234567890",
+    "email": "developer@example.com",
+    "email_verified": True,
+    "name": "Alex Smith",
+    "picture": "https://lh3.googleusercontent.com/a/test-avatar",
+}
+
+
 def test_company_auth_success_acme():
-    """Verify company authentication succeeds with valid password for tenant 'acme'."""
-    response = client.post(
-        "/auth/company",
-        json={"tenant_id": "acme", "password": "AcmeSecret2026!"},
-    )
+    """Verify combined company authentication succeeds with valid password and Google ID token."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/company",
+            json={
+                "tenant_id": "acme",
+                "password": "AcmeSecret2026!",
+                "google_id_token": "valid.mock.google.id.token",
+            },
+        )
     assert response.status_code == 200
     data = response.json()
     assert data["token_type"] == "bearer"
     assert data["tenant_id"] == "acme"
+    assert data["google_sub"] == "google-user-1234567890"
+    assert data["email"] == "developer@example.com"
     assert "access_token" in data
     assert len(data["access_token"]) > 20
     assert data["expires_in"] > 0
@@ -119,25 +135,37 @@ def test_company_auth_success_acme():
 
 
 def test_company_auth_success_globex():
-    """Verify company authentication succeeds with valid password for tenant 'globex'."""
-    response = client.post(
-        "/auth/company",
-        json={"tenant_id": "globex", "password": "GlobexSecret2026!"},
-    )
+    """Verify combined company authentication succeeds with valid password for tenant 'globex'."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/company",
+            json={
+                "tenant_id": "globex",
+                "password": "GlobexSecret2026!",
+                "google_id_token": "valid.mock.google.id.token",
+            },
+        )
     assert response.status_code == 200
     data = response.json()
     assert data["token_type"] == "bearer"
     assert data["tenant_id"] == "globex"
+    assert data["google_sub"] == "google-user-1234567890"
+    assert data["email"] == "developer@example.com"
     assert "access_token" in data
     assert "Globex Corporation" in data["message"]
 
 
 def test_company_auth_invalid_password_returns_401():
     """Verify company authentication fails with 401 when given an incorrect password."""
-    response = client.post(
-        "/auth/company",
-        json={"tenant_id": "acme", "password": "WrongPassword123!"},
-    )
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/company",
+            json={
+                "tenant_id": "acme",
+                "password": "WrongPassword123!",
+                "google_id_token": "valid.mock.google.id.token",
+            },
+        )
     assert response.status_code == 401
     data = response.json()
     assert "Invalid tenant ID or password" in data["detail"]
@@ -145,19 +173,112 @@ def test_company_auth_invalid_password_returns_401():
 
 def test_company_auth_unknown_tenant_returns_401():
     """Verify company authentication fails with 401 for an unknown tenant ID."""
-    response = client.post(
-        "/auth/company",
-        json={"tenant_id": "unknown_corp", "password": "SomePassword!"},
-    )
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/company",
+            json={
+                "tenant_id": "unknown_corp",
+                "password": "SomePassword!",
+                "google_id_token": "valid.mock.google.id.token",
+            },
+        )
     assert response.status_code == 401
     data = response.json()
     assert "Invalid tenant ID or password" in data["detail"]
 
 
-def test_company_auth_missing_fields_returns_422():
-    """Verify company authentication returns 422 for missing required fields."""
-    response = client.post("/auth/company", json={"tenant_id": "acme"})
+def test_company_auth_missing_google_token_returns_422():
+    """Verify company authentication returns 422 if google_id_token is missing."""
+    response = client.post(
+        "/auth/company",
+        json={"tenant_id": "acme", "password": "AcmeSecret2026!"},
+    )
     assert response.status_code in (400, 422)
+
+
+def test_company_auth_invalid_google_token_returns_401():
+    """Verify company authentication fails with 401 if Google ID token is invalid or expired."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", side_effect=ValueError("Token invalid")):
+        response = client.post(
+            "/auth/company",
+            json={
+                "tenant_id": "acme",
+                "password": "AcmeSecret2026!",
+                "google_id_token": "bad.google.id.token",
+            },
+        )
+    assert response.status_code == 401
+    data = response.json()
+    assert "Google ID token" in data["detail"]
+
+
+def test_switch_company_success():
+    """Verify switching company with client-held Google ID token issues a new scoped token without re-login."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/switch-company",
+            json={
+                "new_tenant_id": "globex",
+                "password": "GlobexSecret2026!",
+                "google_id_token": "valid.client.google.token",
+            },
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    assert data["tenant_id"] == "globex"
+    assert data["google_sub"] == "google-user-1234567890"
+    assert data["email"] == "developer@example.com"
+    assert "access_token" in data
+    assert "Globex Corporation" in data["message"]
+
+
+def test_switch_company_invalid_password_returns_401():
+    """Verify switching company fails with 401 when target company password is wrong."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/switch-company",
+            json={
+                "new_tenant_id": "globex",
+                "password": "WrongPassword2026!",
+                "google_id_token": "valid.client.google.token",
+            },
+        )
+    assert response.status_code == 401
+    data = response.json()
+    assert "Invalid company password" in data["detail"]
+
+
+def test_switch_company_unknown_tenant_returns_422():
+    """Verify switching company to an unregistered tenant returns 422."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", return_value=MOCK_GOOGLE_ID_INFO):
+        response = client.post(
+            "/auth/switch-company",
+            json={
+                "new_tenant_id": "nonexistent_tenant",
+                "password": "SomePassword123!",
+                "google_id_token": "valid.client.google.token",
+            },
+        )
+    assert response.status_code == 422
+    data = response.json()
+    assert "Unknown tenant" in data["detail"]
+
+
+def test_switch_company_invalid_google_token_returns_401():
+    """Verify switching company fails with 401 when Google ID token has expired or is invalid."""
+    with patch("google.oauth2.id_token.verify_oauth2_token", side_effect=ValueError("Token expired")):
+        response = client.post(
+            "/auth/switch-company",
+            json={
+                "new_tenant_id": "globex",
+                "password": "GlobexSecret2026!",
+                "google_id_token": "expired.client.google.token",
+            },
+        )
+    assert response.status_code == 401
+    data = response.json()
+    assert "Google ID token" in data["detail"]
 
 
 # ---------------------------------------------------------------------------

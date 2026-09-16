@@ -44,6 +44,7 @@ from api.auth import (
     create_tenant_token,
     get_token_tenant,
     verify_google_id_token,
+    verify_and_extract_google_identity,
 )
 
 # Setup logger
@@ -55,7 +56,7 @@ logging.basicConfig(
 
 
 class CompanyAuthRequest(BaseModel):
-    """Request payload for tenant company authentication."""
+    """Request payload for tenant company authentication requiring prior Google identity verification."""
 
     tenant_id: str = Field(
         ...,
@@ -69,18 +70,49 @@ class CompanyAuthRequest(BaseModel):
         description="Company password for the tenant.",
         examples=["AcmeSecret2026!"],
     )
+    google_id_token: str = Field(
+        ...,
+        min_length=10,
+        description="Valid Google OAuth 2.0 ID token of the user.",
+        examples=["eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."],
+    )
 
 
 class CompanyAuthResponse(BaseModel):
-    """Response payload for successful company authentication."""
+    """Response payload for successful company authentication with unified session token."""
 
-    access_token: str = Field(..., description="Signed JWT access token scoped to tenant.")
+    access_token: str = Field(..., description="Signed combined JWT access token scoped to tenant and Google user.")
     token_type: str = Field(default="bearer", description="Token type header standard.")
     tenant_id: str = Field(..., description="Tenant identifier to which token is scoped.")
+    google_sub: str = Field(..., description="Verified Google user ID (sub claim) bound to this session.")
+    email: Optional[str] = Field(default=None, description="Verified Google user email bound to this session.")
     expires_in: int = Field(..., description="Token lifespan in seconds.")
     message: str = Field(
         default="Authentication successful.",
         description="Status message.",
+    )
+
+
+class SwitchCompanyRequest(BaseModel):
+    """Request payload for switching company access using an existing Google identity token."""
+
+    new_tenant_id: str = Field(
+        ...,
+        min_length=1,
+        description="Target tenant identifier to switch to (e.g., 'acme', 'globex').",
+        examples=["globex"],
+    )
+    password: str = Field(
+        ...,
+        min_length=1,
+        description="Company password for the target tenant.",
+        examples=["GlobexSecret2026!"],
+    )
+    google_id_token: str = Field(
+        ...,
+        min_length=10,
+        description="Valid Google OAuth 2.0 ID token still held client-side.",
+        examples=["eyJhbGciOiJSUzI1NiIsImtpZCI6Ij..."],
     )
 
 
@@ -345,6 +377,7 @@ async def root() -> Dict[str, Any]:
         "test_console_url": "/chat",
         "endpoints": {
             "auth": "POST /auth/company",
+            "switch_company": "POST /auth/switch-company",
             "google_auth": "POST /auth/google",
             "chat": "GET /chat",
             "query": "POST /query",
@@ -497,7 +530,13 @@ def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
     },
 )
 async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
-    """Authenticate a tenant company using its password and issue a scoped JWT access token."""
+    """Authenticate a tenant company requiring prior Google identity verification, issuing a unified JWT."""
+    # 1. Verify Google identity token - company session can only be issued to an already Google-verified user
+    google_user = verify_and_extract_google_identity(req.google_id_token)
+    google_sub = str(google_user["sub"])
+    email = google_user.get("email")
+
+    # 2. Validate tenant ID
     clean_tenant_id = req.tenant_id.strip().lower()
     try:
         tenant_config = get_tenant(clean_tenant_id)
@@ -509,6 +548,7 @@ async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # 3. Verify company password
     if not verify_company_password(req.password, tenant_config.password_hash):
         logger.warning(f"Failed authentication attempt for tenant '{clean_tenant_id}': Incorrect password.")
         raise HTTPException(
@@ -517,15 +557,80 @@ async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # 4. Issue combined JWT containing both tenant_id and google_sub
     settings = get_settings()
-    token = create_tenant_token(clean_tenant_id)
-    logger.info(f"Successfully authenticated company and generated JWT for tenant '{clean_tenant_id}'.")
+    token = create_tenant_token(clean_tenant_id, google_sub=google_sub, email=email)
+    logger.info(
+        f"Successfully authenticated company and generated combined JWT for tenant '{clean_tenant_id}' "
+        f"and Google user '{email}' (sub: '{google_sub}')."
+    )
     return CompanyAuthResponse(
         access_token=token,
         token_type="bearer",
         tenant_id=clean_tenant_id,
+        google_sub=google_sub,
+        email=email,
         expires_in=settings.jwt_expiration_minutes * 60,
-        message=f"Successfully authenticated as {tenant_config.name}.",
+        message=f"Successfully authenticated as {tenant_config.name} for {email}.",
+    )
+
+
+@app.post(
+    "/auth/switch-company",
+    response_model=CompanyAuthResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Authentication"],
+    responses={
+        401: {
+            "description": "Authentication failed: Invalid Google token or company password.",
+        },
+        422: {
+            "description": "Validation failed: Unknown tenant or malformed input payload.",
+        },
+    },
+)
+async def switch_company(req: SwitchCompanyRequest) -> CompanyAuthResponse:
+    """Switch active tenant company using client-held Google ID token without repeated Google sign-in."""
+    # 1. Verify Google identity token held client-side
+    google_user = verify_and_extract_google_identity(req.google_id_token)
+    google_sub = str(google_user["sub"])
+    email = google_user.get("email")
+
+    # 2. Validate target tenant ID
+    clean_tenant_id = req.new_tenant_id.strip().lower()
+    try:
+        tenant_config = get_tenant(clean_tenant_id)
+    except ValueError:
+        logger.warning(f"Switch company failed: unknown tenant '{req.new_tenant_id}'")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Validation failed: Unknown tenant '{req.new_tenant_id}'. Available configured tenants: {list_tenants()}",
+        )
+
+    # 3. Verify new company's password
+    if not verify_company_password(req.password, tenant_config.password_hash):
+        logger.warning(f"Switch company failed for tenant '{clean_tenant_id}': Incorrect password.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Invalid company password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 4. Issue combined JWT scoped to the new tenant_id and tied to google_sub
+    settings = get_settings()
+    token = create_tenant_token(clean_tenant_id, google_sub=google_sub, email=email)
+    logger.info(
+        f"Successfully switched company session to '{clean_tenant_id}' for Google user '{email}' (sub: '{google_sub}')."
+    )
+
+    return CompanyAuthResponse(
+        access_token=token,
+        token_type="bearer",
+        tenant_id=clean_tenant_id,
+        google_sub=google_sub,
+        email=email,
+        expires_in=settings.jwt_expiration_minutes * 60,
+        message=f"Successfully switched company access to {tenant_config.name} for {email}.",
     )
 
 
