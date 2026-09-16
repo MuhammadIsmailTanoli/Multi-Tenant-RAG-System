@@ -278,6 +278,74 @@ async def list_registered_tenants() -> List[TenantSummary]:
         )
 
 
+# ---------------------------------------------------------------------------
+# Small-Talk Interceptor (bypasses vector store and LLM context calls)
+# ---------------------------------------------------------------------------
+SMALL_TALK_PATTERNS = [
+    # Greetings: hi, hello, hey, etc.
+    (
+        re.compile(
+            r"^(hi|hello|hey|heyy+|howdy|greetings|hi\s+there|hello\s+there|good\s+(morning|afternoon|evening))$",
+            re.IGNORECASE,
+        ),
+        lambda name: f"Hello! I am the AI assistant for {name}. How can I help you today?",
+    ),
+    # How are you: how are you, how's it going, etc.
+    (
+        re.compile(
+            r"^(how\s+are\s+you(\s+doing)?|hows\s+it\s+going|how\s+do\s+you\s+do|whats\s+up)$",
+            re.IGNORECASE,
+        ),
+        lambda name: f"I'm doing well, thank you! How can I assist you with {name}'s documents today?",
+    ),
+    # Who are you / Identity
+    (
+        re.compile(
+            r"^(who\s+are\s+you|what\s+are\s+you|what\s+is\s+your\s+name|what\s+can\s+you\s+do|tell\s+me\s+about\s+yourself)$",
+            re.IGNORECASE,
+        ),
+        lambda name: f"I am the knowledge assistant for {name}. I can help answer questions about company policies, guidelines, and handbooks.",
+    ),
+    # Thanks / Gratitude
+    (
+        re.compile(
+            r"^(thanks|thank\s+you|thank\s+you\s+very\s+much|thanks\s+a\s+lot|thx|many\s+thanks)$",
+            re.IGNORECASE,
+        ),
+        lambda name: "You're welcome! Let me know if you need any further assistance.",
+    ),
+    # Bye / Farewell
+    (
+        re.compile(
+            r"^(bye|goodbye|bye\s+bye|see\s+you|see\s+ya|cya|farewell|have\s+a\s+good\s+(day|one))$",
+            re.IGNORECASE,
+        ),
+        lambda name: "Goodbye! Have a great day!",
+    ),
+]
+
+
+def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
+    """Return a direct friendly reply for small-talk queries, skipping database retrieval.
+
+    Args:
+        question: Cleaned user query.
+        tenant_name: Display name of the active tenant.
+
+    Returns:
+        Friendly response string if question matches small talk, otherwise None.
+    """
+    normalized = re.sub(r"[^\w\s]", "", question).strip()
+    if not normalized:
+        return None
+
+    for pattern, reply_fn in SMALL_TALK_PATTERNS:
+        if pattern.match(normalized):
+            return reply_fn(tenant_name)
+
+    return None
+
+
 @app.post(
     "/query",
     response_model=QueryResponse,
@@ -305,10 +373,11 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     Steps:
     1. Validate tenant_id against tenants.yaml (400 if unknown).
     2. Validate question is non-empty (400 if blank).
-    3. Retrieve top-k chunks from tenant's dedicated Chroma collection.
-    4. Build a grounded prompt with strict context-only instructions.
-    5. Generate an answer via the configured LLM provider (Gemini by default).
-    6. Return answer with source citations and chunk count.
+    3. Check for generic small talk (bypasses retrieval/LLM if matched).
+    4. Retrieve top-k chunks from tenant's dedicated Chroma collection.
+    5. Build a grounded prompt with strict context-only instructions.
+    6. Generate an answer via the configured LLM provider (Gemini by default).
+    7. Return answer with source citations and chunk count.
     """
     clean_tenant_id = request.tenant_id.strip().lower()
     clean_question = request.question.strip()
@@ -348,6 +417,22 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     logger.info(
         f"RAG query for tenant '{tenant_config.id}' ({tenant_config.name}): '{clean_question}'"
     )
+
+    # --- Step 2b: Handle generic / small-talk queries without touching the database ---
+    small_talk_reply = get_small_talk_reply(clean_question, tenant_config.name)
+    if small_talk_reply:
+        logger.info(
+            f"Handled small-talk query for tenant '{tenant_config.id}' without database retrieval: '{clean_question}'"
+        )
+        return QueryResponse(
+            tenant_id=tenant_config.id,
+            tenant_name=tenant_config.name,
+            question=clean_question,
+            answer=small_talk_reply,
+            sources=[],
+            chunks_retrieved=0,
+            message=f"Direct small-talk reply for {tenant_config.name} (retrieval skipped).",
+        )
 
     # --- Step 3: Retrieve top-k chunks from tenant's isolated collection ---
     try:

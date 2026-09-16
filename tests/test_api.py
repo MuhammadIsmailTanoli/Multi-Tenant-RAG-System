@@ -244,3 +244,23 @@ def test_root_endpoint_metadata():
     data = response.json()
     assert "documents" in data["endpoints"]
     assert "/documents/{filename}" in data["endpoints"]["documents"]
+
+
+def test_small_talk_skips_retrieval_and_llm():
+    """Verify that small-talk queries return direct friendly replies without touching vector store or LLM."""
+    with patch("api.main.retrieve_tenant_chunks") as mock_retrieve, \
+         patch("api.main.get_llm_adapter") as mock_llm:
+
+        for phrase in ["hi", "hello", "hey", "how are you?", "thanks", "who are you", "bye!"]:
+            response = client.post("/query", json={"tenant_id": "acme", "question": phrase})
+            assert response.status_code == 200
+            data = response.json()
+            assert data["tenant_id"] == "acme"
+            assert data["chunks_retrieved"] == 0
+            assert data["sources"] == []
+            assert len(data["answer"]) > 0
+
+        # Verify that retrieval and LLM calls were completely bypassed
+        mock_retrieve.assert_not_called()
+        mock_llm.assert_not_called()
+
