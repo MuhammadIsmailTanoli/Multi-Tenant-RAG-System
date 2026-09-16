@@ -14,6 +14,7 @@ Full RAG pipeline on POST /query:
 from typing import Any, Dict, List, Optional
 import logging
 import re
+import unicodedata
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -30,6 +31,7 @@ MAX_QUESTION_LENGTH: int = 1000
 from ingestion.config import (
     get_settings,
     load_tenants_config,
+    list_tenants,
     get_tenant,
     TenantConfig,
     PROJECT_ROOT,
@@ -157,10 +159,67 @@ FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 
+def check_control_characters(text: str, field_name: str = "question") -> Optional[str]:
+    """Check for disallowed control characters in the input text.
+
+    Allows standard formatting whitespace: newline (\n), carriage return (\r), tab (\t).
+    Disallows null bytes, backspaces, escapes, and all other unprintable control codes.
+
+    Returns error description if a control character is detected, else None.
+    """
+    for idx, ch in enumerate(text):
+        if ch in ("\n", "\r", "\t"):
+            continue
+        code = ord(ch)
+        category = unicodedata.category(ch)
+        if category == "Cc" or code < 32 or code == 127:
+            char_repr = repr(ch)
+            return (
+                f"Validation failed: '{field_name}' contains invalid or unprintable "
+                f"control character {char_repr} (code {code}) at character index {idx}."
+            )
+    return None
+
+
+@app.middleware("http")
+async def payload_validation_middleware(request: Request, call_next):
+    """Validate incoming request payloads: reject binary content types and non-UTF-8 bytes."""
+    if request.method in ("POST", "PUT", "PATCH") and request.url.path == "/query":
+        content_type = request.headers.get("content-type", "").lower()
+
+        # 1. Reject binary content types
+        if any(b in content_type for b in ("octet-stream", "binary", "x-binary", "application/x-zip")):
+            logger.warning(f"Rejected binary Content-Type '{content_type}' on {request.url.path}")
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={
+                    "detail": "Validation failed: Binary payloads are not supported. Content-Type must be 'application/json' with UTF-8 encoding."
+                },
+            )
+
+        # 2. Check raw body for non-UTF-8 binary byte sequences
+        try:
+            raw_body = await request.body()
+            if raw_body:
+                raw_body.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            logger.warning(f"Rejected non-UTF-8 payload on {request.url.path}: {exc}")
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={
+                    "detail": f"Validation failed: Payload is not valid UTF-8. Non-UTF-8 or binary byte sequences detected: {str(exc)}."
+                },
+            )
+
+    return await call_next(request)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Format Pydantic / schema validation failures into clear, human-readable error messages."""
     errors: List[str] = []
+    has_json_syntax_error = False
+
     for err in exc.errors():
         loc_parts = [str(part) for part in err.get("loc", []) if part != "body"]
         field_name = ".".join(loc_parts) if loc_parts else "body"
@@ -176,15 +235,22 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         elif "string_too_short" in err_type:
             errors.append(f"The '{field_name}' field cannot be empty")
         elif err_type == "json_invalid":
+            has_json_syntax_error = True
             errors.append("Invalid JSON syntax in request body")
         else:
             errors.append(f"Invalid value for field '{field_name}': {msg}")
 
     summary = "; ".join(errors) if errors else "Malformed request payload."
-    detail_message = f"Malformed request: {summary}"
-    logger.warning(f"Rejected malformed request on {request.url.path}: {detail_message}")
+    detail_message = f"Validation failed: Malformed request - {summary}"
+    logger.warning(f"Rejected invalid request on {request.url.path}: {detail_message}")
+
+    status_code = (
+        status.HTTP_400_BAD_REQUEST
+        if has_json_syntax_error
+        else status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status_code,
         content={
             "detail": detail_message,
             "errors": exc.errors(),
@@ -353,11 +419,14 @@ def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
     tags=["Query"],
     responses={
         400: {
-            "description": "Unknown or invalid tenant ID, or empty query question.",
+            "description": "Malformed JSON syntax in request body.",
+        },
+        422: {
+            "description": "Validation failed: Unknown tenant, empty question, control characters, or non-UTF-8/binary payload.",
             "content": {
                 "application/json": {
                     "example": {
-                        "detail": "Unknown tenant 'unknown_corp'. Available configured tenants: [acme, globex]"
+                        "detail": "Validation failed: Unknown tenant 'unknown_corp'. Available configured tenants: ['acme', 'globex']"
                     }
                 }
             },
@@ -379,39 +448,69 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     6. Generate an answer via the configured LLM provider (Gemini by default).
     7. Return answer with source citations and chunk count.
     """
-    clean_tenant_id = request.tenant_id.strip().lower()
-    clean_question = request.question.strip()
+    raw_tenant_id = request.tenant_id
+    raw_question = request.question
 
-    # --- Step 1: Validate tenant_id ---
+    # --- Step 1: Validate tenant_id strictly ---
+    if raw_tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Validation failed: 'tenant_id' field is required and cannot be null.",
+        )
+
+    clean_tenant_id = raw_tenant_id.strip().lower()
     if not clean_tenant_id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The 'tenant_id' field cannot be empty or only whitespace.",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Validation failed: 'tenant_id' field cannot be empty or contain only whitespace.",
         )
 
-    # --- Step 2: Validate question (non-empty & length bounds) ---
-    if not clean_question:
+    tenant_ctrl_err = check_control_characters(raw_tenant_id, field_name="tenant_id")
+    if tenant_ctrl_err:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The 'question' field cannot be empty or only whitespace.",
-        )
-
-    if len(clean_question) > MAX_QUESTION_LENGTH:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"The 'question' field exceeds maximum allowed length of "
-                f"{MAX_QUESTION_LENGTH} characters (received {len(clean_question)} characters)."
-            ),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=tenant_ctrl_err,
         )
 
     try:
         tenant_config: TenantConfig = get_tenant(clean_tenant_id)
     except ValueError as exc:
-        logger.warning(f"Rejected query for invalid tenant '{request.tenant_id}': {exc}")
+        available_tenants = list_tenants()
+        logger.warning(f"Rejected query for unknown tenant '{raw_tenant_id}': {exc}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Validation failed: Unknown tenant '{raw_tenant_id}'. Available configured tenants: {available_tenants}",
+        )
+
+    # --- Step 2: Validate question strictly ---
+    if raw_question is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Validation failed: 'question' field is required and cannot be null.",
+        )
+
+    # Reject unprintable / control characters in question
+    question_ctrl_err = check_control_characters(raw_question, field_name="question")
+    if question_ctrl_err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=question_ctrl_err,
+        )
+
+    clean_question = raw_question.strip()
+    if not clean_question:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Validation failed: 'question' field cannot be empty or contain only whitespace.",
+        )
+
+    if len(clean_question) > MAX_QUESTION_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Validation failed: 'question' field exceeds maximum allowed length of "
+                f"{MAX_QUESTION_LENGTH} characters (received {len(clean_question)} characters)."
+            ),
         )
 
     logger.info(

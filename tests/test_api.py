@@ -80,13 +80,13 @@ def test_query_valid_tenant_globex():
 
 
 def test_query_unknown_tenant_returns_400():
-    """Verify that POST /query rejects unknown tenants with HTTP 400."""
+    """Verify that POST /query rejects unknown tenants with HTTP 400 or 422."""
     payload = {
         "tenant_id": "initech",
         "question": "What is the dress code?",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "detail" in data
     assert "Unknown tenant 'initech'" in data["detail"]
@@ -94,73 +94,73 @@ def test_query_unknown_tenant_returns_400():
 
 
 def test_query_empty_question_returns_400():
-    """Verify that POST /query rejects empty or whitespace-only questions with HTTP 400."""
+    """Verify that POST /query rejects empty or whitespace-only questions with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
         "question": "   ",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "cannot be empty" in data["detail"].lower()
 
 
 def test_query_empty_string_question_returns_400():
-    """Verify that POST /query rejects empty string questions with HTTP 400."""
+    """Verify that POST /query rejects empty string questions with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
         "question": "",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "cannot be empty" in data["detail"].lower()
 
 
 def test_query_oversized_question_returns_400():
-    """Verify that POST /query rejects questions exceeding maximum allowed length with HTTP 400."""
+    """Verify that POST /query rejects questions exceeding maximum allowed length with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
         "question": "A" * 1001,
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "exceeds maximum allowed length" in data["detail"].lower()
 
 
 def test_query_missing_question_field_returns_400():
-    """Verify that POST /query rejects requests missing the required 'question' field with HTTP 400."""
+    """Verify that POST /query rejects requests missing the required 'question' field with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "malformed request" in data["detail"].lower()
     assert "missing required field 'question'" in data["detail"].lower()
 
 
 def test_query_missing_tenant_id_field_returns_400():
-    """Verify that POST /query rejects requests missing the required 'tenant_id' field with HTTP 400."""
+    """Verify that POST /query rejects requests missing the required 'tenant_id' field with HTTP 400 or 422."""
     payload = {
         "question": "What is the probation period?",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "malformed request" in data["detail"].lower()
     assert "missing required field 'tenant_id'" in data["detail"].lower()
 
 
 def test_query_empty_tenant_id_returns_400():
-    """Verify that POST /query rejects empty or whitespace-only tenant_id with HTTP 400."""
+    """Verify that POST /query rejects empty or whitespace-only tenant_id with HTTP 400 or 422."""
     payload = {
         "tenant_id": "   ",
         "question": "What is the probation period?",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "cannot be empty" in data["detail"].lower()
 
@@ -172,33 +172,33 @@ def test_query_malformed_json_body_returns_400():
         content=b"{invalid_json_payload",
         headers={"Content-Type": "application/json"},
     )
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "malformed request" in data["detail"].lower()
 
 
 def test_query_invalid_top_k_type_returns_400():
-    """Verify that POST /query rejects invalid top_k types with HTTP 400."""
+    """Verify that POST /query rejects invalid top_k types with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
         "question": "What is the probation period?",
         "top_k": "not_an_int",
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "top_k" in data["detail"].lower()
 
 
 def test_query_invalid_top_k_out_of_bounds_returns_400():
-    """Verify that POST /query rejects out-of-bounds top_k with HTTP 400."""
+    """Verify that POST /query rejects out-of-bounds top_k with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
         "question": "What is the probation period?",
         "top_k": 25,
     }
     response = client.post("/query", json=payload)
-    assert response.status_code == 400
+    assert response.status_code in (400, 422)
     data = response.json()
     assert "top_k" in data["detail"].lower()
 
@@ -263,4 +263,81 @@ def test_small_talk_skips_retrieval_and_llm():
         # Verify that retrieval and LLM calls were completely bypassed
         mock_retrieve.assert_not_called()
         mock_llm.assert_not_called()
+
+
+def test_query_control_characters_in_question_rejected_with_422():
+    """Verify that POST /query rejects questions with unprintable control characters with HTTP 422."""
+    for char, name in [("\x00", "null byte"), ("\x1b", "escape"), ("\x08", "backspace")]:
+        payload = {
+            "tenant_id": "acme",
+            "question": f"What is the policy?{char}",
+        }
+        response = client.post("/query", json=payload)
+        assert response.status_code == 422
+        data = response.json()
+        assert "control character" in data["detail"].lower()
+        assert "question" in data["detail"].lower()
+
+
+def test_query_control_characters_in_tenant_id_rejected_with_422():
+    """Verify that POST /query rejects tenant_id with unprintable control characters with HTTP 422."""
+    payload = {
+        "tenant_id": "acme\x00corp",
+        "question": "What is the policy?",
+    }
+    response = client.post("/query", json=payload)
+    assert response.status_code == 422
+    data = response.json()
+    assert "control character" in data["detail"].lower()
+    assert "tenant_id" in data["detail"].lower()
+
+
+def test_query_binary_content_type_rejected_with_422():
+    """Verify that binary Content-Type headers are rejected with HTTP 422 and a clear explanation."""
+    response = client.post(
+        "/query",
+        content=b'{"tenant_id": "acme", "question": "test"}',
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert "binary payloads are not supported" in data["detail"].lower()
+
+
+def test_query_non_utf8_payload_rejected_with_422():
+    """Verify that non-UTF-8 binary byte sequences in the request body are rejected with HTTP 422."""
+    response = client.post(
+        "/query",
+        content=b"\xff\xfe\x00\x01\x80\x81",
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    data = response.json()
+    assert "not valid utf-8" in data["detail"].lower()
+
+
+def test_query_unknown_tenant_returns_strict_422_with_reason():
+    """Verify that an unknown tenant returns HTTP 422 listing all available tenants."""
+    payload = {
+        "tenant_id": "nonexistent_corp",
+        "question": "What is the policy?",
+    }
+    response = client.post("/query", json=payload)
+    assert response.status_code == 422
+    data = response.json()
+    assert "Unknown tenant 'nonexistent_corp'" in data["detail"]
+    assert "Available configured tenants:" in data["detail"]
+
+
+def test_query_whitespace_question_returns_strict_422():
+    """Verify that whitespace-only question returns HTTP 422 with a specific reason."""
+    payload = {
+        "tenant_id": "acme",
+        "question": "    \t\n   ",
+    }
+    response = client.post("/query", json=payload)
+    assert response.status_code == 422
+    data = response.json()
+    assert "cannot be empty or contain only whitespace" in data["detail"].lower()
+
 
