@@ -1,11 +1,13 @@
 """Unit and integration tests for FastAPI query endpoints.
 
 Verifies:
-1. POST /query validates tenant_id against tenants.yaml.
-2. Returns HTTP 400 Bad Request for unknown or unauthorized tenants.
-3. Returns HTTP 400 Bad Request for empty questions.
-4. Returns HTTP 200 OK for valid registered tenants (e.g., 'acme', 'globex').
-5. Health and tenant listing endpoints report correct metadata.
+1. POST /auth/company authenticates tenant password and returns scoped JWT.
+2. POST /query requires Bearer token authentication (401 for missing/invalid/expired).
+3. POST /query enforces tenant scope matching (403 for cross-tenant tokens).
+4. POST /query validates tenant_id against tenants.yaml (422 for unknown).
+5. POST /query validates question content, length, and control characters (422).
+6. Small-talk queries bypass Chroma retrieval and LLM context calls.
+7. Static document serving and system health endpoints work as expected.
 """
 
 from unittest.mock import MagicMock, patch
@@ -13,8 +15,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.main import app
+from api.auth import create_tenant_token
 
 client = TestClient(app)
+
+
+def get_auth_headers(tenant_id: str = "acme") -> dict:
+    """Generate Authorization headers with a valid signed JWT scoped to tenant_id."""
+    token = create_tenant_token(tenant_id)
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +36,35 @@ def mock_llm_adapter_for_tests():
     with patch("api.main.get_llm_adapter", return_value=mock_adapter):
         yield mock_adapter
 
+
+@pytest.fixture(autouse=True)
+def mock_retriever_for_tests():
+    """Mock vector retriever to ensure API tests execute offline instantaneously without loading Qwen embedding weights."""
+    from api.retriever import RetrievedChunk
+
+    def _mock_retrieve(tenant_id: str, question: str, top_k: int = 4, **kwargs):
+        return [
+            RetrievedChunk(
+                chunk_id=f"{tenant_id}_chunk_0",
+                text=f"Official handbook policy regarding {question}.",
+                tenant_id=tenant_id,
+                source_file=f"{tenant_id.capitalize()} Employee Handbook.pdf",
+                page_start=1,
+                page_end=2,
+                chunk_index=0,
+                token_count=80,
+                distance=0.1,
+                similarity=0.9,
+            )
+        ]
+
+    with patch("api.main.retrieve_tenant_chunks", side_effect=_mock_retrieve) as mock_retriever:
+        yield mock_retriever
+
+
+# ---------------------------------------------------------------------------
+# System & Health Endpoints
+# ---------------------------------------------------------------------------
 
 def test_health_check():
     """Verify that the health check endpoint returns 200 and active tenants."""
@@ -50,13 +88,144 @@ def test_list_registered_tenants():
     assert "globex" in tenant_ids
 
 
+def test_root_endpoint_metadata():
+    """Verify root endpoint advertises available endpoints including /documents and /auth."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert "auth" in data["endpoints"]
+    assert "documents" in data["endpoints"]
+    assert "/documents/{filename}" in data["endpoints"]["documents"]
+
+
+# ---------------------------------------------------------------------------
+# Company Password Authentication (/auth/company)
+# ---------------------------------------------------------------------------
+
+def test_company_auth_success_acme():
+    """Verify company authentication succeeds with valid password for tenant 'acme'."""
+    response = client.post(
+        "/auth/company",
+        json={"tenant_id": "acme", "password": "AcmeSecret2026!"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    assert data["tenant_id"] == "acme"
+    assert "access_token" in data
+    assert len(data["access_token"]) > 20
+    assert data["expires_in"] > 0
+    assert "Acme Corp" in data["message"]
+
+
+def test_company_auth_success_globex():
+    """Verify company authentication succeeds with valid password for tenant 'globex'."""
+    response = client.post(
+        "/auth/company",
+        json={"tenant_id": "globex", "password": "GlobexSecret2026!"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    assert data["tenant_id"] == "globex"
+    assert "access_token" in data
+    assert "Globex Corporation" in data["message"]
+
+
+def test_company_auth_invalid_password_returns_401():
+    """Verify company authentication fails with 401 when given an incorrect password."""
+    response = client.post(
+        "/auth/company",
+        json={"tenant_id": "acme", "password": "WrongPassword123!"},
+    )
+    assert response.status_code == 401
+    data = response.json()
+    assert "Invalid tenant ID or password" in data["detail"]
+
+
+def test_company_auth_unknown_tenant_returns_401():
+    """Verify company authentication fails with 401 for an unknown tenant ID."""
+    response = client.post(
+        "/auth/company",
+        json={"tenant_id": "unknown_corp", "password": "SomePassword!"},
+    )
+    assert response.status_code == 401
+    data = response.json()
+    assert "Invalid tenant ID or password" in data["detail"]
+
+
+def test_company_auth_missing_fields_returns_422():
+    """Verify company authentication returns 422 for missing required fields."""
+    response = client.post("/auth/company", json={"tenant_id": "acme"})
+    assert response.status_code in (400, 422)
+
+
+# ---------------------------------------------------------------------------
+# Authorization & Cross-Tenant Boundary Enforcement (/query)
+# ---------------------------------------------------------------------------
+
+def test_query_missing_auth_header_returns_401():
+    """Verify that POST /query rejects requests without an Authorization header with HTTP 401."""
+    payload = {
+        "tenant_id": "acme",
+        "question": "What is the probation period?",
+    }
+    response = client.post("/query", json=payload)
+    assert response.status_code == 401
+    assert "missing authorization header" in response.json()["detail"].lower()
+
+
+def test_query_malformed_auth_header_returns_401():
+    """Verify that POST /query rejects malformed Authorization headers with HTTP 401."""
+    payload = {
+        "tenant_id": "acme",
+        "question": "What is the probation period?",
+    }
+    response = client.post("/query", json=payload, headers={"Authorization": "Basic 12345"})
+    assert response.status_code == 401
+    assert "malformed authorization header" in response.json()["detail"].lower()
+
+
+def test_query_invalid_token_returns_401():
+    """Verify that POST /query rejects forged or invalid tokens with HTTP 401."""
+    payload = {
+        "tenant_id": "acme",
+        "question": "What is the probation period?",
+    }
+    response = client.post(
+        "/query",
+        json=payload,
+        headers={"Authorization": "Bearer invalid.jwt.token"},
+    )
+    assert response.status_code == 401
+    assert "invalid authorization token" in response.json()["detail"].lower()
+
+
+def test_query_cross_tenant_token_returns_403_forbidden():
+    """Verify that using a token scoped to 'acme' to query 'globex' is blocked with HTTP 403 Forbidden."""
+    acme_headers = get_auth_headers("acme")
+    payload = {
+        "tenant_id": "globex",
+        "question": "What is the security clearance protocol?",
+    }
+    response = client.post("/query", json=payload, headers=acme_headers)
+    assert response.status_code == 403
+    data = response.json()
+    assert "access forbidden" in data["detail"].lower()
+    assert "does not match the requested tenant" in data["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Query Pipeline Tests (With Valid Auth)
+# ---------------------------------------------------------------------------
+
 def test_query_valid_tenant_acme():
     """Verify that POST /query succeeds for valid tenant 'acme'."""
     payload = {
         "tenant_id": "acme",
         "question": "What is the probation period duration?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code == 200
     data = response.json()
     assert data["tenant_id"] == "acme"
@@ -71,7 +240,7 @@ def test_query_valid_tenant_globex():
         "tenant_id": "globex",
         "question": "What is the security clearance protocol?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("globex"))
     assert response.status_code == 200
     data = response.json()
     assert data["tenant_id"] == "globex"
@@ -85,7 +254,7 @@ def test_query_unknown_tenant_returns_400():
         "tenant_id": "initech",
         "question": "What is the dress code?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("initech"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "detail" in data
@@ -99,7 +268,7 @@ def test_query_empty_question_returns_400():
         "tenant_id": "acme",
         "question": "   ",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "cannot be empty" in data["detail"].lower()
@@ -111,7 +280,7 @@ def test_query_empty_string_question_returns_400():
         "tenant_id": "acme",
         "question": "",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "cannot be empty" in data["detail"].lower()
@@ -123,7 +292,7 @@ def test_query_oversized_question_returns_400():
         "tenant_id": "acme",
         "question": "A" * 501,
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "exceeds maximum allowed length" in data["detail"].lower()
@@ -134,7 +303,7 @@ def test_query_missing_question_field_returns_400():
     payload = {
         "tenant_id": "acme",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "malformed request" in data["detail"].lower()
@@ -146,7 +315,7 @@ def test_query_missing_tenant_id_field_returns_400():
     payload = {
         "question": "What is the probation period?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "malformed request" in data["detail"].lower()
@@ -159,7 +328,7 @@ def test_query_empty_tenant_id_returns_400():
         "tenant_id": "   ",
         "question": "What is the probation period?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "cannot be empty" in data["detail"].lower()
@@ -167,10 +336,12 @@ def test_query_empty_tenant_id_returns_400():
 
 def test_query_malformed_json_body_returns_400():
     """Verify that POST /query rejects invalid JSON syntax with HTTP 400."""
+    headers = get_auth_headers("acme")
+    headers["Content-Type"] = "application/json"
     response = client.post(
         "/query",
         content=b"{invalid_json_payload",
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
     assert response.status_code in (400, 422)
     data = response.json()
@@ -184,7 +355,7 @@ def test_query_invalid_top_k_type_returns_400():
         "question": "What is the probation period?",
         "top_k": "not_an_int",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "top_k" in data["detail"].lower()
@@ -197,7 +368,7 @@ def test_query_invalid_top_k_out_of_bounds_returns_400():
         "question": "What is the probation period?",
         "top_k": 25,
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code in (400, 422)
     data = response.json()
     assert "top_k" in data["detail"].lower()
@@ -209,7 +380,7 @@ def test_query_case_insensitivity():
         "tenant_id": "ACME",
         "question": "What are working hours?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code == 200
     data = response.json()
     assert data["tenant_id"] == "acme"
@@ -237,22 +408,17 @@ def test_serve_nonexistent_pdf_returns_404():
     assert response.status_code == 404
 
 
-def test_root_endpoint_metadata():
-    """Verify root endpoint advertises available endpoints including /documents."""
-    response = client.get("/")
-    assert response.status_code == 200
-    data = response.json()
-    assert "documents" in data["endpoints"]
-    assert "/documents/{filename}" in data["endpoints"]["documents"]
-
-
 def test_small_talk_skips_retrieval_and_llm():
     """Verify that small-talk queries return direct friendly replies without touching vector store or LLM."""
     with patch("api.main.retrieve_tenant_chunks") as mock_retrieve, \
          patch("api.main.get_llm_adapter") as mock_llm:
 
         for phrase in ["hi", "hello", "hey", "how are you?", "thanks", "who are you", "bye!"]:
-            response = client.post("/query", json={"tenant_id": "acme", "question": phrase})
+            response = client.post(
+                "/query",
+                json={"tenant_id": "acme", "question": phrase},
+                headers=get_auth_headers("acme"),
+            )
             assert response.status_code == 200
             data = response.json()
             assert data["tenant_id"] == "acme"
@@ -272,7 +438,7 @@ def test_query_control_characters_in_question_rejected_with_422():
             "tenant_id": "acme",
             "question": f"What is the policy?{char}",
         }
-        response = client.post("/query", json=payload)
+        response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
         assert response.status_code == 422
         data = response.json()
         assert "control character" in data["detail"].lower()
@@ -285,7 +451,7 @@ def test_query_control_characters_in_tenant_id_rejected_with_422():
         "tenant_id": "acme\x00corp",
         "question": "What is the policy?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code == 422
     data = response.json()
     assert "control character" in data["detail"].lower()
@@ -294,10 +460,12 @@ def test_query_control_characters_in_tenant_id_rejected_with_422():
 
 def test_query_binary_content_type_rejected_with_422():
     """Verify that binary Content-Type headers are rejected with HTTP 422 and a clear explanation."""
+    headers = get_auth_headers("acme")
+    headers["Content-Type"] = "application/octet-stream"
     response = client.post(
         "/query",
         content=b'{"tenant_id": "acme", "question": "test"}',
-        headers={"Content-Type": "application/octet-stream"},
+        headers=headers,
     )
     assert response.status_code == 422
     data = response.json()
@@ -306,10 +474,12 @@ def test_query_binary_content_type_rejected_with_422():
 
 def test_query_non_utf8_payload_rejected_with_422():
     """Verify that non-UTF-8 binary byte sequences in the request body are rejected with HTTP 422."""
+    headers = get_auth_headers("acme")
+    headers["Content-Type"] = "application/json"
     response = client.post(
         "/query",
         content=b"\xff\xfe\x00\x01\x80\x81",
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
     assert response.status_code == 422
     data = response.json()
@@ -322,7 +492,7 @@ def test_query_unknown_tenant_returns_strict_422_with_reason():
         "tenant_id": "nonexistent_corp",
         "question": "What is the policy?",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("nonexistent_corp"))
     assert response.status_code == 422
     data = response.json()
     assert "Unknown tenant 'nonexistent_corp'" in data["detail"]
@@ -335,9 +505,7 @@ def test_query_whitespace_question_returns_strict_422():
         "tenant_id": "acme",
         "question": "    \t\n   ",
     }
-    response = client.post("/query", json=payload)
+    response = client.post("/query", json=payload, headers=get_auth_headers("acme"))
     assert response.status_code == 422
     data = response.json()
     assert "cannot be empty or contain only whitespace" in data["detail"].lower()
-
-

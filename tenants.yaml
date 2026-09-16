@@ -4,9 +4,11 @@ tenants:
     pdf_path: "data/handbooks/Acme Corp Employee Handbook.pdf"
     collection_name: "tenant_acme"
     description: "Multiversal hardware, explosives, and chaotic tech solutions"
+    password_hash: "$2b$12$X8hEXcoAfdnt5N0/bspE9.DkxDkhiRsSlEjFNBBQewDVzmFGCQ486"
 
   - id: globex
     name: "Globex Corporation"
     pdf_path: "data/handbooks/Globex Corporation Employee Handbook.pdf"
     collection_name: "tenant_globex"
     description: "Global energy, international logistics, and high-security operations"
+    password_hash: "$2b$12$fivoERBV1xrncJGAIpDk1eJv1fVyrc7w0dTw0liPLdghg6OPRw8Zy"

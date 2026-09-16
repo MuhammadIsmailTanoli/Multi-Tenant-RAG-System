@@ -18,7 +18,7 @@ import unicodedata
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -39,6 +39,11 @@ from ingestion.config import (
 from api.retriever import retrieve_tenant_chunks, TenantIsolationError, CollectionNotFoundError
 from api.prompts import build_rag_prompt, format_sources_for_response, RAG_SYSTEM_PROMPT, clean_rag_response
 from api.llm_provider import get_llm_adapter
+from api.auth import (
+    verify_company_password,
+    create_tenant_token,
+    get_token_tenant,
+)
 
 # Setup logger
 logger = logging.getLogger("api.main")
@@ -46,6 +51,36 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
 )
+
+
+class CompanyAuthRequest(BaseModel):
+    """Request payload for tenant company authentication."""
+
+    tenant_id: str = Field(
+        ...,
+        min_length=1,
+        description="Unique identifier of the tenant (e.g., 'acme', 'globex').",
+        examples=["acme"],
+    )
+    password: str = Field(
+        ...,
+        min_length=1,
+        description="Company password for the tenant.",
+        examples=["AcmeSecret2026!"],
+    )
+
+
+class CompanyAuthResponse(BaseModel):
+    """Response payload for successful company authentication."""
+
+    access_token: str = Field(..., description="Signed JWT access token scoped to tenant.")
+    token_type: str = Field(default="bearer", description="Token type header standard.")
+    tenant_id: str = Field(..., description="Tenant identifier to which token is scoped.")
+    expires_in: int = Field(..., description="Token lifespan in seconds.")
+    message: str = Field(
+        default="Authentication successful.",
+        description="Status message.",
+    )
 
 
 class QueryRequest(BaseModel):
@@ -191,7 +226,7 @@ async def payload_validation_middleware(request: Request, call_next):
         if any(b in content_type for b in ("octet-stream", "binary", "x-binary", "application/x-zip")):
             logger.warning(f"Rejected binary Content-Type '{content_type}' on {request.url.path}")
             return JSONResponse(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 content={
                     "detail": "Validation failed: Binary payloads are not supported. Content-Type must be 'application/json' with UTF-8 encoding."
                 },
@@ -205,7 +240,7 @@ async def payload_validation_middleware(request: Request, call_next):
         except UnicodeDecodeError as exc:
             logger.warning(f"Rejected non-UTF-8 payload on {request.url.path}: {exc}")
             return JSONResponse(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 content={
                     "detail": f"Validation failed: Payload is not valid UTF-8. Non-UTF-8 or binary byte sequences detected: {str(exc)}."
                 },
@@ -247,7 +282,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     status_code = (
         status.HTTP_400_BAD_REQUEST
         if has_json_syntax_error
-        else status.HTTP_422_UNPROCESSABLE_ENTITY
+        else status.HTTP_422_UNPROCESSABLE_CONTENT
     )
     return JSONResponse(
         status_code=status_code,
@@ -283,6 +318,7 @@ async def root() -> Dict[str, Any]:
         "docs_url": "/docs",
         "test_console_url": "/chat",
         "endpoints": {
+            "auth": "POST /auth/company",
             "chat": "GET /chat",
             "query": "POST /query",
             "tenants": "GET /tenants",
@@ -413,6 +449,60 @@ def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
 
 
 @app.post(
+    "/auth/company",
+    response_model=CompanyAuthResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Authentication"],
+    responses={
+        401: {
+            "description": "Authentication failed: Invalid tenant ID or password.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Authentication failed: Invalid tenant ID or password."
+                    }
+                }
+            },
+        },
+        422: {
+            "description": "Validation failed: Malformed input payload.",
+        },
+    },
+)
+async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
+    """Authenticate a tenant company using its password and issue a scoped JWT access token."""
+    clean_tenant_id = req.tenant_id.strip().lower()
+    try:
+        tenant_config = get_tenant(clean_tenant_id)
+    except ValueError:
+        logger.warning(f"Failed authentication attempt for unknown tenant: '{req.tenant_id}'")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Invalid tenant ID or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not verify_company_password(req.password, tenant_config.password_hash):
+        logger.warning(f"Failed authentication attempt for tenant '{clean_tenant_id}': Incorrect password.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed: Invalid tenant ID or password.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    settings = get_settings()
+    token = create_tenant_token(clean_tenant_id)
+    logger.info(f"Successfully authenticated company and generated JWT for tenant '{clean_tenant_id}'.")
+    return CompanyAuthResponse(
+        access_token=token,
+        token_type="bearer",
+        tenant_id=clean_tenant_id,
+        expires_in=settings.jwt_expiration_minutes * 60,
+        message=f"Successfully authenticated as {tenant_config.name}.",
+    )
+
+
+@app.post(
     "/query",
     response_model=QueryResponse,
     status_code=status.HTTP_200_OK,
@@ -420,6 +510,12 @@ def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
     responses={
         400: {
             "description": "Malformed JSON syntax in request body.",
+        },
+        401: {
+            "description": "Authentication failed: Missing, invalid, or expired authorization token.",
+        },
+        403: {
+            "description": "Access forbidden: Authorization token tenant does not match requested tenant_id.",
         },
         422: {
             "description": "Validation failed: Unknown tenant, empty question, control characters, or non-UTF-8/binary payload.",
@@ -436,17 +532,21 @@ def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
         },
     },
 )
-async def query_tenant(request: QueryRequest) -> QueryResponse:
+async def query_tenant(
+    request: QueryRequest,
+    token_tenant_id: str = Depends(get_token_tenant),
+) -> QueryResponse:
     """Full RAG pipeline: retrieve → prompt → generate → respond.
 
     Steps:
-    1. Validate tenant_id against tenants.yaml (400 if unknown).
-    2. Validate question is non-empty (400 if blank).
-    3. Check for generic small talk (bypasses retrieval/LLM if matched).
-    4. Retrieve top-k chunks from tenant's dedicated Chroma collection.
-    5. Build a grounded prompt with strict context-only instructions.
-    6. Generate an answer via the configured LLM provider (Gemini by default).
-    7. Return answer with source citations and chunk count.
+    1. Validate tenant_id against tenants.yaml (422 if unknown).
+    2. Enforce tenant token scope: token_tenant_id must match request tenant_id (403 if mismatch).
+    3. Validate question is non-empty (422 if blank).
+    4. Check for generic small talk (bypasses retrieval/LLM if matched).
+    5. Retrieve top-k chunks from tenant's dedicated Chroma collection.
+    6. Build a grounded prompt with strict context-only instructions.
+    7. Generate an answer via the configured LLM provider (Gemini by default).
+    8. Return answer with source citations and chunk count.
     """
     raw_tenant_id = request.tenant_id
     raw_question = request.question
@@ -454,21 +554,21 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     # --- Step 1: Validate tenant_id strictly ---
     if raw_tenant_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Validation failed: 'tenant_id' field is required and cannot be null.",
         )
 
     clean_tenant_id = raw_tenant_id.strip().lower()
     if not clean_tenant_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Validation failed: 'tenant_id' field cannot be empty or contain only whitespace.",
         )
 
     tenant_ctrl_err = check_control_characters(raw_tenant_id, field_name="tenant_id")
     if tenant_ctrl_err:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=tenant_ctrl_err,
         )
 
@@ -478,14 +578,27 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
         available_tenants = list_tenants()
         logger.warning(f"Rejected query for unknown tenant '{raw_tenant_id}': {exc}")
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Validation failed: Unknown tenant '{raw_tenant_id}'. Available configured tenants: {available_tenants}",
+        )
+
+    # --- Step 1b: Verify token tenant matches request tenant ---
+    if token_tenant_id != clean_tenant_id:
+        logger.warning(
+            f"Cross-tenant query blocked: Token scoped to '{token_tenant_id}' attempted to access '{clean_tenant_id}'."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Access forbidden: Authorization token is scoped to tenant '{token_tenant_id}', "
+                f"which does not match the requested tenant '{clean_tenant_id}'."
+            ),
         )
 
     # --- Step 2: Validate question strictly ---
     if raw_question is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Validation failed: 'question' field is required and cannot be null.",
         )
 
@@ -493,20 +606,20 @@ async def query_tenant(request: QueryRequest) -> QueryResponse:
     question_ctrl_err = check_control_characters(raw_question, field_name="question")
     if question_ctrl_err:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=question_ctrl_err,
         )
 
     clean_question = raw_question.strip()
     if not clean_question:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Validation failed: 'question' field cannot be empty or contain only whitespace.",
         )
 
     if len(clean_question) > MAX_QUESTION_LENGTH:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 f"Validation failed: 'question' field exceeds maximum allowed length of "
                 f"{MAX_QUESTION_LENGTH} characters (received {len(clean_question)} characters)."

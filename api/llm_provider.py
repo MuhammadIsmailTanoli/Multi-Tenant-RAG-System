@@ -363,10 +363,6 @@ def get_llm_adapter(
     Raises:
         ValueError: If provider is unsupported.
     """
-    # Re-read .env on every call so model/provider changes take effect without
-    # restarting uvicorn (override=True overwrites already-set os.environ values).
-    load_dotenv(PROJECT_ROOT / ".env", override=True)
-
     raw_provider = provider_name or os.getenv("LLM_PROVIDER") or DEFAULT_PROVIDER
     clean_provider = raw_provider.strip().lower()
 

@@ -36,6 +36,10 @@ class TenantConfig(BaseModel):
         default=None,
         description="Optional tenant description or domain context.",
     )
+    password_hash: str = Field(
+        ...,
+        description="Bcrypt hash of the tenant company password for authentication.",
+    )
 
     @field_validator("id")
     @classmethod
@@ -133,6 +137,18 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, description="API server port.")
     base_url: str = Field(default="http://localhost:8000", description="Base URL for public links and documents.")
     log_level: str = Field(default="INFO", description="Logging verbosity level.")
+    jwt_secret_key: str = Field(
+        default="multi-tenant-rag-super-secure-jwt-signing-key-32chars!",
+        description="Secret key for signing tenant authentication JWT tokens.",
+    )
+    jwt_algorithm: str = Field(
+        default="HS256",
+        description="JWT hashing algorithm.",
+    )
+    jwt_expiration_minutes: int = Field(
+        default=60,
+        description="Expiration time in minutes for signed tenant JWT tokens.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(PROJECT_ROOT / ".env"),
