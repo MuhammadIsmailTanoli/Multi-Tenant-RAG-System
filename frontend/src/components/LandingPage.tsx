@@ -20,11 +20,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
     <div className="relative min-h-screen flex flex-col justify-center items-center px-4 py-12 z-10">
       {/* Executive Header */}
       <motion.div
-        className="text-center max-w-2xl mx-auto mb-12 sm:mb-16"
+        className="text-center max-w-2xl mx-auto mb-10 sm:mb-14 flex flex-col items-center"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
+        <div
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="cursor-pointer mb-5 group flex flex-col items-center"
+          title="Multi-Tenant RAG System"
+        >
+          <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl group-hover:border-white/20 transition-all duration-300">
+            <img
+              src="/images/LOGO.png"
+              alt="Multi-Tenant RAG Platform"
+              className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)] transition-transform duration-300 group-hover:scale-105"
+            />
+          </div>
+        </div>
+
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-slate-300 text-xs font-medium tracking-wide mb-4 backdrop-blur-md shadow-sm">
           <Lock className="w-3.5 h-3.5 text-indigo-400" />
           <span>Multi-Tenant RAG Isolation Platform</span>
@@ -91,7 +105,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
                   Engineering, Hardware & High-Yield Prototyping
                 </p>
                 <p className="text-sm text-slate-300 mb-8 leading-relaxed">
-                  Query Acme's internal documentation regarding device testing, prototyping safety protocols, and 90-day evaluation guidelines.
+                  A multi-trillion-dollar conglomerate specializing in quantum physics manipulation, hyper-accelerated logistics, and gravity-defying consumer goods.
                 </p>
               </div>
 
@@ -162,7 +176,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
                   Enterprise Security, Infrastructure & Intelligence
                 </p>
                 <p className="text-sm text-slate-300 mb-8 leading-relaxed">
-                  Query Globex's restricted knowledge base for enterprise surveillance guidelines, compliance policies, and 180-day probation milestones.
+                  A globally dominant enterprise reshaping global energy, redefining international logistics, and building a future.
                 </p>
               </div>
 

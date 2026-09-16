@@ -16,6 +16,7 @@ interface GoogleSignInStepProps {
   companyPassword: string;
   onSuccess: () => void;
   onBack: () => void;
+  onHome?: () => void;
 }
 
 export const GoogleSignInStep: React.FC<GoogleSignInStepProps> = ({
@@ -23,6 +24,7 @@ export const GoogleSignInStep: React.FC<GoogleSignInStepProps> = ({
   companyPassword,
   onSuccess,
   onBack,
+  onHome,
 }) => {
   const { tokens } = useTheme();
   const { setGoogleAuth, authenticateCompany } = useAuth();
@@ -108,6 +110,18 @@ export const GoogleSignInStep: React.FC<GoogleSignInStepProps> = ({
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center px-4 py-8 z-10">
+      {/* Top Logo linking back to 1st home page */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 cursor-pointer flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 transition-all duration-200"
+        onClick={onHome || onBack}
+        title="Return to Home Page"
+      >
+        <img src="/images/LOGO.png" alt="Platform Logo" className="w-8 h-8 object-contain rounded-lg" />
+        <span className="text-xs font-semibold tracking-wide text-slate-300">Multi-Tenant RAG</span>
+      </motion.div>
+
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}

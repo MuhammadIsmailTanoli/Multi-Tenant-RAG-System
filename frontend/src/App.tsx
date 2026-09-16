@@ -15,7 +15,7 @@ import { AppScreen, RateLimitErrorDetail } from './types';
 // Inner app reads from ThemeContext and AuthContext
 const InnerApp: React.FC = () => {
   const { activeTenant, setTheme } = useTheme();
-  const { session, googleIdToken, switchCompanyAccess } = useAuth();
+  const { session, googleIdToken, switchCompanyAccess, authenticateCompany } = useAuth();
 
   const [screen, setScreen] = useState<AppScreen>('landing');
   const [pendingTenant, setPendingTenant] = useState<'acme' | 'globex' | null>(null);
@@ -32,18 +32,24 @@ const InnerApp: React.FC = () => {
   const handlePasswordSuccess = async (password: string) => {
     setCompanyPassword(password);
 
-    // If user already has a Google session, switch company directly (no re-auth)
-    if (googleIdToken && session) {
+    // If user already has a Google token (either in session or remembered), authenticate directly without asking for Google Sign-In again
+    if (googleIdToken) {
       try {
-        await switchCompanyAccess(pendingTenant!, password);
+        if (session) {
+          await switchCompanyAccess(pendingTenant!, password);
+        } else {
+          await authenticateCompany(pendingTenant!, password, googleIdToken);
+        }
         setScreen('chat');
-      } catch {
-        // Fall through to Google sign-in if switch fails
+        return;
+      } catch (err) {
+        console.warn('Authentication with remembered Google token failed, requesting re-auth:', err);
         setScreen('google-auth');
+        return;
       }
-    } else {
-      setScreen('google-auth');
     }
+
+    setScreen('google-auth');
   };
 
   const handleGoogleAuthSuccess = () => {
@@ -51,6 +57,7 @@ const InnerApp: React.FC = () => {
   };
 
   const handleSwitchCompany = () => {
+    setTheme(null);
     setScreen('landing');
   };
 
@@ -142,6 +149,10 @@ const InnerApp: React.FC = () => {
               companyPassword={companyPassword}
               onSuccess={handleGoogleAuthSuccess}
               onBack={() => setScreen('password')}
+              onHome={() => {
+                setTheme(null);
+                setScreen('landing');
+              }}
             />
           </motion.div>
         )}
@@ -155,7 +166,10 @@ const InnerApp: React.FC = () => {
             exit="exit"
             transition={pageTransition}
           >
-            <ChatPage onRateLimitHit={handleRateLimitHit} />
+            <ChatPage
+              onRateLimitHit={handleRateLimitHit}
+              onOpenLimits={() => setShowLimitsModal(true)}
+            />
           </motion.div>
         )}
 

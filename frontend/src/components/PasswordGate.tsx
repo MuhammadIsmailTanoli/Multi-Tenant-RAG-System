@@ -20,7 +20,7 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
   const [isShaking, setIsShaking] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const demoPassword = tenantId === 'acme' ? 'AcmeSecret2026!' : 'GlobexSecret2026!';
+  const expectedPassword = tenantId === 'acme' ? 'Acme@Admin' : 'Globex@Admin';
   const accentColor = tenantId === 'acme' ? 'amber' : 'cyan';
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -31,8 +31,8 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
       return;
     }
 
-    if (password !== demoPassword) {
-      setError('Invalid company password. Use the demo credentials below.');
+    if (password !== expectedPassword) {
+      setError('Invalid company password. Please check your credentials and try again.');
       triggerErrorAnimation();
       return;
     }
@@ -46,13 +46,20 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
     setTimeout(() => setIsShaking(false), 600);
   };
 
-  const handleAutoFill = () => {
-    setPassword(demoPassword);
-    setError(null);
-  };
-
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center px-4 py-8 z-10">
+      {/* Top Logo linking back to 1st home page */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 cursor-pointer flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 transition-all duration-200"
+        onClick={onBack}
+        title="Return to Home Page"
+      >
+        <img src="/images/LOGO.png" alt="Platform Logo" className="w-8 h-8 object-contain rounded-lg" />
+        <span className="text-xs font-semibold tracking-wide text-slate-300">Multi-Tenant RAG</span>
+      </motion.div>
+
       <motion.div
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
         animate={
@@ -104,8 +111,8 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
           </div>
           <p className="text-sm text-slate-400 leading-relaxed">
             {tenantId === 'acme'
-              ? 'Enter the Acme Corporation workspace password to proceed to Google identity verification.'
-              : 'Enter the Globex Corporation access code to proceed to identity verification.'}
+              ? 'Enter the Acme Corporation workspace password to proceed.'
+              : 'Enter the Globex Corporation access code to proceed.'}
           </p>
         </div>
 
@@ -139,7 +146,7 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password..."
+                placeholder="Enter company password..."
                 autoFocus
                 className="w-full px-4 py-3 pr-10 text-sm bg-white/[0.04] text-white placeholder-slate-500 border border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:border-transparent transition-all"
                 style={{
@@ -158,29 +165,6 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
             </div>
           </div>
 
-          {/* Demo Credential Helper */}
-          <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/8 flex items-center justify-between gap-2">
-            <div>
-              <span className="text-[10px] block font-semibold uppercase tracking-wider text-slate-500 mb-0.5">
-                Demo Credentials
-              </span>
-              <code className="font-mono text-sm font-semibold text-slate-200">
-                {demoPassword}
-              </code>
-            </div>
-            <button
-              type="button"
-              onClick={handleAutoFill}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                tenantId === 'acme'
-                  ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20'
-                  : 'bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/20'
-              }`}
-            >
-              Auto-fill
-            </button>
-          </div>
-
           <button
             type="submit"
             className={`w-full py-3.5 px-4 text-sm font-semibold flex items-center justify-center gap-2 rounded-xl transition-all ${
@@ -190,7 +174,7 @@ export const PasswordGate: React.FC<PasswordGateProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            Verify & Continue to Google Sign-In
+            Verify Password & Continue
           </button>
         </form>
       </motion.div>

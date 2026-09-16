@@ -39,8 +39,21 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Session JWT is intentionally held strictly in React memory state (not localStorage)
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
-  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(null);
+  const [googleIdToken, setGoogleIdToken] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('multi_tenant_rag_google_token') || null;
+    } catch {
+      return null;
+    }
+  });
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('multi_tenant_rag_google_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [limits, setLimits] = useState<LimitsStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +61,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearError = () => setError(null);
 
   const setGoogleAuth = (idToken: string, user: GoogleUser) => {
+    try {
+      localStorage.setItem('multi_tenant_rag_google_token', idToken);
+      localStorage.setItem('multi_tenant_rag_google_user', JSON.stringify(user));
+    } catch (e) {
+      console.warn('Could not store Google auth in localStorage:', e);
+    }
     setGoogleIdToken(idToken);
     setGoogleUser(user);
     setError(null);
@@ -111,6 +130,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
     setGoogleIdToken(null);
     setGoogleUser(null);
+    try {
+      localStorage.removeItem('multi_tenant_rag_google_token');
+      localStorage.removeItem('multi_tenant_rag_google_user');
+    } catch {}
     setLimits(null);
     setError(null);
   };

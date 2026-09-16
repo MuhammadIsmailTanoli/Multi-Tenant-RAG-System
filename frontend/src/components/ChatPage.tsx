@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Cpu, ShieldCheck, User, Sparkles, AlertCircle } from 'lucide-react';
+import { Send, Cpu, ShieldCheck, User, Sparkles, AlertCircle, Gauge } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { ChatMessage, RateLimitErrorDetail } from '../types';
@@ -9,9 +9,10 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface ChatPageProps {
   onRateLimitHit: (detail: RateLimitErrorDetail) => void;
+  onOpenLimits?: () => void;
 }
 
-export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit }) => {
+export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit, onOpenLimits }) => {
   const { activeTenant, tokens } = useTheme();
   const { session, googleUser, refreshLimitsStatus } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -19,25 +20,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const samplePrompts =
-    activeTenant === 'acme'
-      ? [
-          'What is the probation period duration?',
-          'What is Acme Corp’s policy on explosive equipment?',
-          'Can I expense rocket skates?',
-        ]
-      : [
-          'What is the probation period duration?',
-          'What are the Globex security clearance rules?',
-          'What is the international travel policy?',
-        ];
-
   // Initialize welcoming message on tenant load
   useEffect(() => {
     const welcomeText =
       activeTenant === 'acme'
-        ? `Hello **${googleUser?.name || 'there'}**! Welcome to the **Acme Corporation** internal knowledge base. You can query policies regarding equipment handling, prototyping safety, or standard 90-day probation milestones.`
-        : `Identity confirmed: **${googleUser?.email || 'Authorized User'}**. Connected to **Globex Corporation** Enterprise Policy Intelligence. Submit your inquiry regarding corporate compliance, surveillance parameters, or 180-day probation standards.`;
+        ? `Hello **${googleUser?.name || 'there'}**! Welcome to the **Acme Corporation** internal knowledge base.`
+        : `Identity confirmed: **${googleUser?.email || 'Authorized User'}**. Connected to **Globex Corporation** Enterprise Policy Intelligence.`;
 
     setMessages([
       {
@@ -244,26 +232,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested Quick Prompt Chips */}
-      <div className="py-2.5 flex items-center gap-2 overflow-x-auto no-scrollbar">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">
-          Suggested:
-        </span>
-        {samplePrompts.map((prompt, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => handleSendQuery(prompt)}
-            disabled={isLoading}
-            className="text-xs px-3 py-1.5 shrink-0 whitespace-nowrap rounded-full backdrop-blur-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 hover:border-white/20 transition-all font-medium disabled:opacity-40"
-          >
-            {prompt}
-          </button>
-        ))}
-      </div>
-
       {/* Bottom Glass Input Bar */}
-      <div className="p-2 sm:p-2.5 rounded-2xl backdrop-blur-2xl bg-white/[0.04] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+      <div className="p-2 sm:p-2.5 rounded-2xl backdrop-blur-2xl bg-white/[0.04] border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)] mt-2">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -271,6 +241,23 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit }) => {
           }}
           className="flex items-center gap-2 sm:gap-3"
         >
+          {/* Usage Quota Button placed on side of chat box */}
+          {onOpenLimits && (
+            <button
+              type="button"
+              onClick={onOpenLimits}
+              className={`p-2.5 sm:px-3 sm:py-2.5 text-xs font-semibold rounded-xl flex items-center gap-1.5 shrink-0 transition-all border ${
+                activeTenant === 'acme'
+                  ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/25'
+                  : 'bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border-cyan-500/25'
+              }`}
+              title="Inspect Daily & Weekly Quotas / Usage"
+            >
+              <Gauge className="w-4 h-4" />
+              <span className="hidden sm:inline">Usage</span>
+            </button>
+          )}
+
           <textarea
             value={inputQuery}
             onChange={(e) => setInputQuery(e.target.value)}
