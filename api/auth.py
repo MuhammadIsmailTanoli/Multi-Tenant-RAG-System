@@ -181,6 +181,38 @@ def get_token_tenant(authorization: Optional[str] = Header(None)) -> str:
     return str(token_tenant).strip().lower()
 
 
+import time
+
+
+class _CachedGoogleRequest(google_requests.Request):
+    """Caching transport for Google OAuth cert requests to prevent repetitive slow network roundtrips."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cache: Dict[str, tuple] = {}
+
+    def __call__(self, url: str, method: str = "GET", body=None, headers=None, timeout=None, **kwargs):
+        now = time.time()
+        if method == "GET" and url in self._cache:
+            data, status_code, resp_headers, expiry = self._cache[url]
+            if now < expiry:
+                class _CachedResponse:
+                    def __init__(self, d, s, h):
+                        self.data = d
+                        self.status = s
+                        self.headers = h
+                return _CachedResponse(data, status_code, resp_headers)
+
+        resp = super().__call__(url, method=method, body=body, headers=headers, timeout=timeout, **kwargs)
+        if method == "GET" and getattr(resp, "status", None) == 200:
+            # Cache Google certs for 2 hours (Google certs have max-age of ~6+ hours)
+            self._cache[url] = (resp.data, resp.status, getattr(resp, "headers", {}), now + 7200)
+        return resp
+
+
+_shared_google_request = _CachedGoogleRequest()
+
+
 def verify_google_id_token(
     token: str,
     client_id: Optional[str] = None,
@@ -208,10 +240,9 @@ def verify_google_id_token(
     expected_client_id = client_id or settings.google_client_id
 
     try:
-        request = google_requests.Request()
         id_info = google_id_token.verify_oauth2_token(
             token.strip(),
-            request,
+            _shared_google_request,
             expected_client_id,
         )
         return id_info
