@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 # Validation constraints
-MAX_QUESTION_LENGTH: int = 1000
+MAX_QUESTION_LENGTH: int = 500
 
 from ingestion.config import (
     get_settings,

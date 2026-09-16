@@ -359,17 +359,44 @@
       flex-shrink: 0;
     }
 
-    .input-box {
+    .input-container {
+      position: relative;
       flex: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-box {
+      width: 100%;
       background: rgba(0,0,0,0.35);
       border: 1px solid var(--border-subtle);
       border-radius: 12px;
-      padding: 0.82rem 1.1rem;
+      padding: 0.82rem 5.4rem 0.82rem 1.1rem;
       color: var(--text-primary);
       font-family: inherit;
       font-size: 0.93rem;
       outline: none;
       transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .char-counter {
+      position: absolute;
+      right: 0.9rem;
+      font-size: 0.74rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-muted);
+      pointer-events: none;
+      user-select: none;
+      transition: color 0.2s ease;
+    }
+
+    .char-counter.warning {
+      color: #F59E0B;
+    }
+
+    .char-counter.limit {
+      color: #EF4444;
+      font-weight: 600;
     }
 
     .input-box:focus {
@@ -462,13 +489,18 @@
 
     <!-- Input -->
     <div class="input-area">
-      <input
-        type="text"
-        id="question-input"
-        class="input-box"
-        placeholder="Ask a question about the active tenant's handbook..."
-        onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleSend(); }"
-      />
+      <div class="input-container">
+        <input
+          type="text"
+          id="question-input"
+          class="input-box"
+          maxlength="500"
+          placeholder="Ask a question about the active tenant's handbook..."
+          oninput="updateCharCount()"
+          onkeydown="if(event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleSend(); }"
+        />
+        <div class="char-counter" id="char-counter">0 / 500</div>
+      </div>
       <button class="send-btn" id="send-btn" onclick="handleSend()">
         Ask
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -485,6 +517,21 @@
     function scrollToBottom() {
       const area = document.getElementById('messages-area');
       area.scrollTo({ top: area.scrollHeight, behavior: 'smooth' });
+    }
+
+    function updateCharCount() {
+      const input = document.getElementById('question-input');
+      const counter = document.getElementById('char-counter');
+      if (!input || !counter) return;
+      const len = input.value.length;
+      counter.textContent = `${len} / 500`;
+      if (len >= 500) {
+        counter.className = 'char-counter limit';
+      } else if (len >= 450) {
+        counter.className = 'char-counter warning';
+      } else {
+        counter.className = 'char-counter';
+      }
     }
 
     function setTenant(tenant) {
@@ -518,6 +565,7 @@
       const q     = input.value.trim();
       if (!q) return;
       input.value = '';
+      updateCharCount();
       await executeQuery({ tenant_id: currentTenant, question: q, top_k: 4 });
     }
 

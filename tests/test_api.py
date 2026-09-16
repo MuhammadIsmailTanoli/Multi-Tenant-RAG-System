@@ -121,7 +121,7 @@ def test_query_oversized_question_returns_400():
     """Verify that POST /query rejects questions exceeding maximum allowed length with HTTP 400 or 422."""
     payload = {
         "tenant_id": "acme",
-        "question": "A" * 1001,
+        "question": "A" * 501,
     }
     response = client.post("/query", json=payload)
     assert response.status_code in (400, 422)
