@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
       --bg-main: #0B0F19;
@@ -225,8 +226,128 @@
     .tenant-label {
       font-size: 0.78rem;
       font-weight: 700;
-      margin-bottom: 0.35rem;
-      opacity: 0.85;
+      margin-bottom: 0.45rem;
+      opacity: 0.9;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Rich Markdown Typography ── */
+    .markdown-content {
+      font-size: 0.93rem;
+      line-height: 1.7;
+      color: var(--text-primary);
+    }
+
+    .markdown-content > *:first-child { margin-top: 0 !important; }
+    .markdown-content > *:last-child { margin-bottom: 0 !important; }
+
+    .markdown-content h1 {
+      font-size: 1.32rem;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin: 1rem 0 0.5rem 0;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      letter-spacing: -0.02em;
+    }
+
+    .markdown-content h2 {
+      font-size: 1.16rem;
+      font-weight: 700;
+      color: #F1F5F9;
+      margin: 0.85rem 0 0.45rem 0;
+      letter-spacing: -0.01em;
+    }
+
+    .markdown-content h3 {
+      font-size: 1.04rem;
+      font-weight: 600;
+      color: #E2E8F0;
+      margin: 0.75rem 0 0.35rem 0;
+    }
+
+    .markdown-content h4 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #CBD5E1;
+      margin: 0.6rem 0 0.3rem 0;
+    }
+
+    .markdown-content p {
+      margin: 0 0 0.75rem 0;
+    }
+
+    .markdown-content strong,
+    .markdown-content b {
+      font-weight: 700;
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 0.08rem 0.28rem;
+      border-radius: 4px;
+    }
+
+    .markdown-content em,
+    .markdown-content i {
+      font-style: italic;
+      color: #CBD5E1;
+    }
+
+    .markdown-content ul,
+    .markdown-content ol {
+      margin: 0.5rem 0 0.85rem 1.4rem;
+      padding: 0;
+    }
+
+    .markdown-content li {
+      margin-bottom: 0.38rem;
+      line-height: 1.6;
+    }
+
+    .markdown-content li::marker {
+      color: #818CF8;
+    }
+
+    .markdown-content code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.84rem;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #F472B6;
+      padding: 0.12rem 0.38rem;
+      border-radius: 5px;
+    }
+
+    .markdown-content pre {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 0.85rem;
+      overflow-x: auto;
+      margin: 0.75rem 0;
+    }
+
+    .markdown-content pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: #E2E8F0;
+    }
+
+    .markdown-content blockquote {
+      border-left: 3px solid #6366F1;
+      background: rgba(99, 102, 241, 0.06);
+      padding: 0.5rem 0.85rem;
+      border-radius: 0 6px 6px 0;
+      margin: 0.65rem 0;
+      color: #94A3B8;
+      font-style: italic;
+    }
+
+    .markdown-content hr {
+      border: none;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      margin: 0.9rem 0;
     }
 
     /* ── Sources accordion ── */
@@ -611,7 +732,35 @@
 
     function formatAnswer(text) {
       if (!text) return '<em style="color:var(--text-muted)">No answer generated.</em>';
-      return escapeHtml(text).replace(/\n/g, '<br>');
+
+      // 1. If marked.js is available from CDN, use it
+      if (window.marked && typeof window.marked.parse === 'function') {
+        window.marked.setOptions({
+          breaks: true,
+          gfm: true
+        });
+        return `<div class="markdown-content">${window.marked.parse(text)}</div>`;
+      }
+
+      // 2. Safe standalone fallback parser (handles bold, headings, bullets, code)
+      let html = escapeHtml(text);
+      // Headings
+      html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+      html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+      html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+      // Bold
+      html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      // Italic
+      html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      // Inline code
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      // Lists
+      html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+      html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+      // Line breaks
+      html = html.replace(/\n/g, '<br>');
+
+      return `<div class="markdown-content">${html}</div>`;
     }
 
     function escapeHtml(s) {
