@@ -36,7 +36,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit, onOpenLimits
         tenantId: activeTenant as 'acme' | 'globex',
       },
     ]);
-  }, [activeTenant]);
+  }, [activeTenant, googleUser?.name, googleUser?.email]);
 
   // Auto-scroll to bottom of message list
   const scrollToBottom = () => {
@@ -109,7 +109,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit, onOpenLimits
   return (
     <div className="flex flex-col h-[calc(100vh-4.5rem)] sm:h-[calc(100vh-5rem)] max-w-5xl mx-auto px-3 sm:px-4 py-3 relative z-10">
       {/* Message Feed */}
-      <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 space-y-4 pt-2">
+      <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 space-y-4 pt-4 sm:pt-6 pb-2">
         <AnimatePresence initial={false}>
           {messages.map((msg) => (
             <motion.div

@@ -15,7 +15,7 @@ import { AppScreen, RateLimitErrorDetail } from './types';
 // Inner app reads from ThemeContext and AuthContext
 const InnerApp: React.FC = () => {
   const { activeTenant, setTheme } = useTheme();
-  const { session, googleIdToken, switchCompanyAccess, authenticateCompany } = useAuth();
+  const { session, googleIdToken, switchCompanyAccess, authenticateCompany, logout } = useAuth();
 
   const [screen, setScreen] = useState<AppScreen>('landing');
   const [pendingTenant, setPendingTenant] = useState<'acme' | 'globex' | null>(null);
@@ -61,6 +61,12 @@ const InnerApp: React.FC = () => {
     setScreen('landing');
   };
 
+  const handleSignOut = () => {
+    logout();
+    setTheme(null);
+    setScreen('landing');
+  };
+
   const handleRateLimitHit = (detail: RateLimitErrorDetail) => {
     setRateLimitDetail(detail);
     setScreen('rate-limit');
@@ -97,7 +103,7 @@ const InnerApp: React.FC = () => {
         <Navbar
           onOpenLimits={() => setShowLimitsModal(true)}
           onSwitchCompany={handleSwitchCompany}
-          onSignOut={handleSwitchCompany}
+          onSignOut={handleSignOut}
         />
       )}
 
