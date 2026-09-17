@@ -76,11 +76,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onRateLimitHit, onOpenLimits
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      // Update limits in background
+      // Update limits counter in background after successful query
       refreshLimitsStatus();
     } catch (err: any) {
       if (err instanceof RateLimitError) {
-        // Trigger 429 full takeover screen!
+        // Refresh limits so the counter shows the exhausted state, then trigger popup
+        refreshLimitsStatus();
         onRateLimitHit(err.detail);
         return;
       }
