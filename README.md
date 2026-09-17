@@ -10,13 +10,8 @@ It allows multiple distinct corporate entities ( **Acme Corp** and **Globex Corp
 
 https://github.com/MuhammadIsmailTanoli/Multi-Tenant-RAG-System/raw/dev/DEMO.mp4
 
-> [!TIP]
-> If the video player above does not stream directly in your browser, you can view or download it directly on GitHub:  
-> 🔗 **[Watch DEMO.mp4 on GitHub](
 
-Uploading DEMO.mp4…
-
-)**
+https://github.com/user-attachments/assets/88055ba4-27fd-40f0-bc7f-d259cf038305
 
 ---
 
