@@ -5,10 +5,11 @@ A secure, enterprise-grade Multi-Tenant Retrieval-Augmented Generation (RAG) sys
 It allows multiple distinct corporate entities ( **Acme Corp** and **Globex Corporation**) to query their internal confidential employee handbooks through a unified interface while guaranteeing **100% strict physical data isolation**, multi-tiered authentication, and persistent quota enforcement.
 
 ---
-
 ## Demo Video
 
 <video src="https://github.com/MuhammadIsmailTanoli/Multi-Tenant-RAG-System/raw/dev/DEMO.mp4" controls width="700"></video>
+
+[▶ Watch the demo video](https://github.com/MuhammadIsmailTanoli/Multi-Tenant-RAG-System/blob/dev/DEMO.mp4)
 
 ## 🌐 Live Web Access & Demo Credentials
 
