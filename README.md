@@ -2,7 +2,7 @@
 
 A secure, enterprise-grade Multi-Tenant Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **ChromaDB**, **Groq / LLaMA 3**, and **React (TypeScript)**.
 
-It allows multiple distinct corporate entities (such as **Acme Corp** and **Globex Corporation**) to query their internal confidential employee handbooks through a unified interface while guaranteeing **100% strict physical data isolation**, multi-tiered authentication, and persistent quota enforcement.
+It allows multiple distinct corporate entities ( **Acme Corp** and **Globex Corporation**) to query their internal confidential employee handbooks through a unified interface while guaranteeing **100% strict physical data isolation**, multi-tiered authentication, and persistent quota enforcement.
 
 ---
 
@@ -52,7 +52,7 @@ The frontend is live and deployed on **Vercel**:
 Follow these steps to run both the FastAPI backend and the React frontend on your local system.
 
 ### Prerequisites
-- **Python 3.11+** or **Python 3.13** installed
+- **Python 3.13** installed
 - **Node.js 18+** and **npm** installed
 - **Git** installed
 - Free API keys from [Groq Console](https://console.groq.com) and [Google Cloud Console](https://console.cloud.google.com/) (OAuth Client ID)
@@ -75,11 +75,7 @@ cd Multi-Tenant-RAG-System
      python -m venv venv
      .\venv\Scripts\activate
      ```
-   - **Linux / macOS:**
-     ```bash
-     python3 -m venv venv
-     source venv/bin/activate
-     ```
+
 
 2. **Install backend dependencies:**
    ```bash
@@ -117,7 +113,7 @@ cd Multi-Tenant-RAG-System
 
 5. **Start the FastAPI Backend Server:**
    ```bash
-   python -m uvicorn api.main:app --reload --port 8000
+   py -3.13 -m uvicorn api.main:app --reload --port 8000
    ```
    The backend will be live at:
    - **API Root**: [http://localhost:8000](http://localhost:8000)
@@ -195,7 +191,7 @@ cd Multi-Tenant-RAG-System
 
 ---
 
-## 🌟 Key Features & Enterprise Safeguards (Plus Points)
+## 🌟 Key Features & Enterprise Safeguards 
 
 ### 1. 🛡️ Strict Physical Multi-Tenant Isolation
 - **Separate Physical Storage**: Rather than relying on soft metadata tags or prompt filtering, each tenant maintains an isolated physical directory (`data/chroma/tenant_acme` vs. `data/chroma/tenant_globex`).
@@ -244,7 +240,7 @@ pytest tests/ -v
 ## 📄 Further Technical Documentation
 
 > [!TIP]
-> For in-depth architecture diagrams, vector space analysis, threat modeling, and full API endpoint specifications, please refer to the upcoming **`documentation.pdf`** file located in the root directory.
+> For in-depth architecture diagrams, vector space analysis, threat modeling, and full API endpoint specifications, please read  **`documentation.pdf`** file located in the root directory.
 
 ---
 
