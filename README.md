@@ -6,6 +6,10 @@ It allows multiple distinct corporate entities ( **Acme Corp** and **Globex Corp
 
 ---
 
+## Demo Video
+
+<video src="https://github.com/MuhammadIsmailTanoli/Multi-Tenant-RAG-System/raw/dev/DEMO.mp4" controls width="700"></video>
+
 ## 🌐 Live Web Access & Demo Credentials
 
 The frontend is live and deployed on **Vercel**:
