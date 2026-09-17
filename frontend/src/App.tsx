@@ -97,6 +97,7 @@ const InnerApp: React.FC = () => {
         <Navbar
           onOpenLimits={() => setShowLimitsModal(true)}
           onSwitchCompany={handleSwitchCompany}
+          onSignOut={handleSwitchCompany}
         />
       )}
 

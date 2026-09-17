@@ -21,17 +21,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectCompany }) => 
       {/* Top Left Branding Logo */}
       <div
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed top-5 left-5 sm:top-6 sm:left-6 z-40 cursor-pointer flex items-center gap-2.5 px-3 py-2 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 backdrop-blur-xl shadow-lg transition-all duration-200 group"
+        className="fixed top-4 left-4 sm:top-5 sm:left-5 z-40 cursor-pointer flex items-center p-1.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 backdrop-blur-xl shadow-lg transition-all duration-200 group"
         title="Multi-Tenant RAG System"
       >
         <img
           src="/images/LOGO.png"
           alt="Multi-Tenant RAG"
-          className="w-8 h-8 sm:w-9 sm:h-9 object-contain drop-shadow group-hover:scale-105 transition-transform"
+          className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-lg group-hover:scale-105 transition-transform"
         />
-        <span className="font-bold text-xs tracking-wider text-slate-300 group-hover:text-white uppercase font-mono hidden sm:inline">
-          RAG // SYSTEM
-        </span>
       </div>
 
       {/* Executive Header */}

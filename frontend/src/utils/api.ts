@@ -1,5 +1,7 @@
 import { AuthSession, GoogleUser, LimitsStatusResponse, RateLimitErrorDetail } from '../types';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
 /**
  * Custom error class capturing rate limit details when HTTP 429 is returned.
  */
@@ -17,7 +19,7 @@ export class RateLimitError extends Error {
  * Verify Google OAuth 2.0 ID Token with backend.
  */
 export async function verifyGoogleToken(idToken: string): Promise<GoogleUser> {
-  const response = await fetch('/auth/google', {
+  const response = await fetch(`${API_BASE_URL}/auth/google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_token: idToken }),
@@ -45,7 +47,7 @@ export async function loginCompany(
   password: string,
   googleIdToken: string
 ): Promise<AuthSession> {
-  const response = await fetch('/auth/company', {
+  const response = await fetch(`${API_BASE_URL}/auth/company`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -78,7 +80,7 @@ export async function switchCompany(
   password: string,
   googleIdToken: string
 ): Promise<AuthSession> {
-  const response = await fetch('/auth/switch-company', {
+  const response = await fetch(`${API_BASE_URL}/auth/switch-company`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -111,7 +113,7 @@ export async function queryHandbook(
   question: string,
   token: string
 ): Promise<{ answer: string; chunksRetrieved: number; executionTimeMs: number }> {
-  const response = await fetch('/query', {
+  const response = await fetch(`${API_BASE_URL}/query`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -157,7 +159,7 @@ export async function fetchLimits(token?: string): Promise<LimitsStatusResponse>
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch('/limits', {
+  const response = await fetch(`${API_BASE_URL}/limits`, {
     headers,
   });
 
