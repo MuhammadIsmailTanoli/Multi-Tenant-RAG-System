@@ -12,7 +12,11 @@ https://github.com/MuhammadIsmailTanoli/Multi-Tenant-RAG-System/raw/dev/DEMO.mp4
 
 > [!TIP]
 > If the video player above does not stream directly in your browser, you can view or download it directly on GitHub:  
-> 🔗 **[Watch DEMO.mp4 on GitHub](https://github.com/MuhammadIsmailTanoli/Multi-Tenant-RAG-System/blob/dev/DEMO.mp4)**
+> 🔗 **[Watch DEMO.mp4 on GitHub](
+
+Uploading DEMO.mp4…
+
+)**
 
 ---
 
