@@ -23,6 +23,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 # Validation constraints
@@ -257,7 +258,12 @@ HANDBOOKS_DIR = PROJECT_ROOT / "data" / "handbooks"
 HANDBOOKS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/documents", StaticFiles(directory=str(HANDBOOKS_DIR)), name="documents")
 
-# Serve frontend assets (avatars, etc.) from /static/
+# Serve Vite production build assets (JS, CSS) from /assets/
+FRONTEND_DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="assets")
+
+# Serve legacy frontend directory for avatars/images from /static/
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
@@ -400,16 +406,26 @@ async def root() -> Dict[str, Any]:
     }
 
 
-@app.get("/chat", tags=["Testing"])
-async def testing_chat_ui():
-    """Serve the interactive testing chat console web page."""
-    frontend_path = PROJECT_ROOT / "frontend" / "index.html"
-    if not frontend_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Testing frontend index.html not found.",
-        )
-    return FileResponse(str(frontend_path), media_type="text/html")
+@app.get("/chat", tags=["Frontend"])
+async def serve_chat_app():
+    """Serve the React/Vite multi-tenant RAG chat application.
+
+    Looks first for the production Vite dist build; falls back to legacy index.html.
+    """
+    # Prefer Vite production build
+    vite_index = PROJECT_ROOT / "frontend" / "dist" / "index.html"
+    if vite_index.exists():
+        return FileResponse(str(vite_index), media_type="text/html")
+
+    # Fallback to legacy plain HTML file if dist not yet built
+    legacy_index = PROJECT_ROOT / "frontend" / "index.html"
+    if legacy_index.exists():
+        return FileResponse(str(legacy_index), media_type="text/html")
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Frontend not found. Run 'npm run build' inside the frontend/ directory first.",
+    )
 
 
 @app.get("/health", tags=["System"])
@@ -564,7 +580,7 @@ def get_small_talk_reply(question: str, tenant_name: str) -> Optional[str]:
 async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
     """Authenticate a tenant company requiring prior Google identity verification, issuing a unified JWT."""
     # 1. Verify Google identity token - company session can only be issued to an already Google-verified user
-    google_user = verify_and_extract_google_identity(req.google_id_token)
+    google_user = await run_in_threadpool(verify_and_extract_google_identity, req.google_id_token)
     google_sub = str(google_user["sub"])
     email = google_user.get("email")
 
@@ -624,7 +640,7 @@ async def authenticate_company(req: CompanyAuthRequest) -> CompanyAuthResponse:
 async def switch_company(req: SwitchCompanyRequest) -> CompanyAuthResponse:
     """Switch active tenant company using client-held Google ID token without repeated Google sign-in."""
     # 1. Verify Google identity token held client-side
-    google_user = verify_and_extract_google_identity(req.google_id_token)
+    google_user = await run_in_threadpool(verify_and_extract_google_identity, req.google_id_token)
     google_sub = str(google_user["sub"])
     email = google_user.get("email")
 
@@ -712,7 +728,7 @@ async def authenticate_google(req: GoogleAuthRequest) -> GoogleAuthResponse:
         )
 
     # Server-side cryptographic token verification via google.oauth2.id_token.verify_oauth2_token
-    id_info = verify_google_id_token(token_str)
+    id_info = await run_in_threadpool(verify_google_id_token, token_str)
 
     sub = id_info.get("sub")
     email = id_info.get("email")
