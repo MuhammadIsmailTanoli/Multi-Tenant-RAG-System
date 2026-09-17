@@ -3,6 +3,15 @@ import { AuthSession, GoogleUser, LimitsStatusResponse, RateLimitErrorDetail } f
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 /**
+ * Shared base headers to include in every API request.
+ * ngrok-skip-browser-warning bypasses the ngrok interstitial HTML page
+ * so the backend receives the real request instead of a browser-warning HTML blob.
+ */
+const BASE_HEADERS: Record<string, string> = {
+  'ngrok-skip-browser-warning': 'true',
+};
+
+/**
  * Custom error class capturing rate limit details when HTTP 429 is returned.
  */
 export class RateLimitError extends Error {
@@ -21,7 +30,7 @@ export class RateLimitError extends Error {
 export async function verifyGoogleToken(idToken: string): Promise<GoogleUser> {
   const response = await fetch(`${API_BASE_URL}/auth/google`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
     body: JSON.stringify({ id_token: idToken }),
   });
 
@@ -49,7 +58,7 @@ export async function loginCompany(
 ): Promise<AuthSession> {
   const response = await fetch(`${API_BASE_URL}/auth/company`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       tenant_id: tenantId,
       password,
@@ -82,7 +91,7 @@ export async function switchCompany(
 ): Promise<AuthSession> {
   const response = await fetch(`${API_BASE_URL}/auth/switch-company`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...BASE_HEADERS, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       new_tenant_id: newTenantId,
       password,
@@ -116,6 +125,7 @@ export async function queryHandbook(
   const response = await fetch(`${API_BASE_URL}/query`, {
     method: 'POST',
     headers: {
+      ...BASE_HEADERS,
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
@@ -154,18 +164,23 @@ export async function queryHandbook(
  * Fetch current rate limit usage stats.
  */
 export async function fetchLimits(token?: string): Promise<LimitsStatusResponse> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...BASE_HEADERS };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}/limits`, {
-    headers,
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/limits`, { headers });
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch rate limits');
+    if (!response.ok) {
+      console.warn('[fetchLimits] Non-OK response:', response.status, response.statusText);
+      return { google_sub: null, authenticated: false, limits: [] };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    console.warn('[fetchLimits] Network error:', err);
+    return { google_sub: null, authenticated: false, limits: [] };
   }
-
-  return response.json();
 }
